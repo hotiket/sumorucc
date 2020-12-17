@@ -4,7 +4,7 @@ assert() {
 	expected="$1"
 	input="$2"
 
-	target/debug/rustcc "$input" >tmp.s
+	target/debug/rcc "$input" >tmp.s
 	cc -o tmp tmp.s
 	./tmp
 	actual="$?"

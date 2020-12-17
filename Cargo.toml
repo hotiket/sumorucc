@@ -1,5 +1,5 @@
 [package]
-name = "rustcc"
+name = "rcc"
 version = "0.1.0"
 authors = ["hotiket <hotiket@gmail.com>"]
 edition = "2018"
