@@ -2,10 +2,6 @@ use std::env;
 use std::process::exit;
 
 macro_rules! error {
-    () => {
-        eprintln!();
-        exit(1);
-    };
     ($fmt:expr) => {
         eprintln!($fmt);
         exit(1);
@@ -16,16 +12,32 @@ macro_rules! error {
     };
 }
 
+macro_rules! error_at {
+    ($src:expr, $at:expr, $fmt:expr) => {
+        eprintln!("{}", $src);
+        eprint!("{}^ ", " ".repeat($at));
+        eprintln!($fmt);
+        exit(1);
+    };
+    ($src:expr, $at:expr, $fmt:expr, $($arg:tt)*) => {
+        eprintln!("{}", $src);
+        eprintln!("{}^", " ".repeat($at));
+        eprintln!($fmt, $($arg)*);
+        exit(1);
+    };
+}
+
 enum Token {
     // 記号
-    RESERVED(String),
+    RESERVED(String, usize),
     // 整数
-    NUM(isize, String),
+    NUM(isize, String, usize),
     // 入力の終わりを表すトークン
     EOF,
 }
 
 struct TokenStream {
+    src: String,
     token: Vec<Token>,
     current: usize,
 }
@@ -51,7 +63,7 @@ impl TokenStream {
     // 次のトークンが期待している記号のときには、トークンを1つ読み進めて
     // 真を返す。それ以外の場合には偽を返す。
     fn consume(&mut self, op: char) -> bool {
-        if let Some(Token::RESERVED(s)) = self.peek() {
+        if let Some(Token::RESERVED(s, _)) = self.peek() {
             if *s == op.to_string() {
                 self.next();
                 return true;
@@ -63,27 +75,48 @@ impl TokenStream {
     // 次のトークンが期待している記号のときには、トークンを1つ読み進める。
     // それ以外の場合にはエラーを報告する。
     fn except(&mut self, op: char) {
-        if let Some(Token::RESERVED(s)) = self.next() {
-            if *s == op.to_string() {
-                return;
+        let mut error_pos = None;
+
+        match self.next() {
+            Some(Token::RESERVED(s, pos)) => {
+                if *s == op.to_string() {
+                    return;
+                }
+
+                error_pos = Some(*pos);
             }
+            Some(Token::NUM(_, _, pos)) => error_pos = Some(*pos),
+            _ => (),
         }
 
-        error!("{}ではありません", op);
+        error_at!(
+            self.src,
+            error_pos.unwrap_or_else(|| self.src.len()),
+            "{}ではありません",
+            op
+        );
     }
 
     // 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
     // それ以外の場合にはエラーを報告する。
     fn except_number(&mut self) -> isize {
-        if let Some(Token::NUM(n, _)) = self.next() {
-            *n
-        } else {
-            error!("数ではありません。");
+        let mut error_pos = None;
 
-            #[allow(unreachable_code)]
-            // 型を合わせるためのダミー
-            0
+        match self.next() {
+            Some(Token::NUM(n, _, _)) => return *n,
+            Some(Token::RESERVED(_, pos)) => error_pos = Some(*pos),
+            _ => (),
         }
+
+        error_at!(
+            self.src,
+            error_pos.unwrap_or_else(|| self.src.len()),
+            "数ではありません"
+        );
+
+        #[allow(unreachable_code)]
+        // 型を合わせるためのダミー
+        0
     }
 
     fn at_eof(&self) -> bool {
@@ -95,13 +128,16 @@ fn tokenize(src: &str) -> TokenStream {
     let expr: Vec<char> = src.chars().collect();
 
     let mut token = Vec::new();
-    let mut num_string = String::from("");
+    let mut num = (String::new(), 0);
 
     for i in 0..expr.len() {
         let c = expr[i];
         match c {
             '0'..='9' => {
-                num_string.push(c);
+                if num.0.is_empty() {
+                    num.1 = i;
+                }
+                num.0.push(c);
 
                 let is_last_digit = if i == expr.len() - 1 {
                     true
@@ -111,27 +147,31 @@ fn tokenize(src: &str) -> TokenStream {
                 };
 
                 if is_last_digit {
-                    let n = num_string.parse::<isize>().unwrap();
-                    token.push(Token::NUM(n, num_string));
+                    let n = num.0.parse::<isize>().unwrap();
+                    token.push(Token::NUM(n, num.0, num.1));
 
-                    num_string = String::from("");
+                    num.0 = String::new();
                 }
             }
 
-            '+' | '-' => token.push(Token::RESERVED(c.to_string())),
+            '+' | '-' => token.push(Token::RESERVED(c.to_string(), i)),
 
             // 空白文字をスキップ
             _ if c.is_ascii_whitespace() => continue,
 
             _ => {
-                error!("トークナイズできません");
+                error_at!(src, i, "トークナイズできません");
             }
         }
     }
 
     token.push(Token::EOF);
 
-    TokenStream { token, current: 0 }
+    TokenStream {
+        src: src.to_string(),
+        token,
+        current: 0,
+    }
 }
 
 fn main() {
