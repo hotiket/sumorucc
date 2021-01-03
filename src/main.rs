@@ -124,6 +124,57 @@ impl TokenStream {
     }
 }
 
+enum Node {
+    ADD(Box<Node>, Box<Node>),
+    SUB(Box<Node>, Box<Node>),
+    NUM(isize),
+}
+
+// expr := num ("+" num | "-" num)*
+fn expr(token: &mut TokenStream) -> Node {
+    let mut node = Node::NUM(token.except_number());
+
+    loop {
+        if token.consume('+') {
+            let lhs = Box::new(node);
+            let rhs = Box::new(Node::NUM(token.except_number()));
+            node = Node::ADD(lhs, rhs);
+        } else if token.consume('-') {
+            let lhs = Box::new(node);
+            let rhs = Box::new(Node::NUM(token.except_number()));
+            node = Node::SUB(lhs, rhs);
+        } else {
+            return node;
+        }
+    }
+}
+
+fn gen_binary_operator(lhs: &Node, rhs: &Node) {
+    gen(lhs);
+    gen(rhs);
+    println!("        pop rdi");
+    println!("        pop rax");
+}
+
+fn gen(node: &Node) {
+    match node {
+        Node::ADD(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        add rax, rdi");
+        }
+        Node::SUB(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        sub rax, rdi");
+        }
+        Node::NUM(n) => {
+            println!("        push {}", n);
+            return;
+        }
+    }
+
+    println!("        push rax");
+}
+
 fn tokenize(src: &str) -> TokenStream {
     let expr: Vec<char> = src.chars().collect();
 
@@ -181,26 +232,20 @@ fn main() {
         error!("引数の個数が正しくありません");
     }
 
+    // トークナイズしてパースする
     let mut token_stream = tokenize(&args[1]);
+    let node = expr(&mut token_stream);
 
     // アセンブリの前半部分を出力
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
-    // 式の最初は数でなければならないので、それをチェックして
-    // 最初のmov命令を出力
-    println!("        mov rax, {}", token_stream.except_number());
+    // 抽象構文木を下りながらコード生成
+    gen(&node);
 
-    while !token_stream.at_eof() {
-        if token_stream.consume('+') {
-            println!("        add rax, {}", token_stream.except_number());
-            continue;
-        }
-
-        token_stream.except('-');
-        println!("        sub rax, {}", token_stream.except_number());
-    }
-
+    // スタックトップに式全体の値が残っているはずなので
+    // それをRAXにロードして関数からの返り値とする
+    println!("        pop rax");
     println!("        ret");
 }
