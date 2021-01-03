@@ -140,22 +140,35 @@ fn expr(token: &mut TokenStream) -> Node {
     }
 }
 
-// mul := primary ("*" primary | "/" primary)*
+// mul := unary ("*" unary | "/" unary)*
 fn mul(token: &mut TokenStream) -> Node {
-    let mut node = primary(token);
+    let mut node = unary(token);
 
     loop {
         if token.consume('*') {
             let lhs = Box::new(node);
-            let rhs = Box::new(primary(token));
+            let rhs = Box::new(unary(token));
             node = Node::MUL(lhs, rhs);
         } else if token.consume('/') {
             let lhs = Box::new(node);
-            let rhs = Box::new(primary(token));
+            let rhs = Box::new(unary(token));
             node = Node::DIV(lhs, rhs);
         } else {
             return node;
         }
+    }
+}
+
+// unary := ("+" | "-")? primary
+fn unary(token: &mut TokenStream) -> Node {
+    if token.consume('+') {
+        primary(token)
+    } else if token.consume('-') {
+        let lhs = Box::new(Node::NUM(0));
+        let rhs = Box::new(primary(token));
+        Node::SUB(lhs, rhs)
+    } else {
+        primary(token)
     }
 }
 

@@ -35,4 +35,9 @@ assert 7 "(4+3)*(2-1)"
 assert 8 " ( 1 + 12) * 4  / (8 - 2) "
 assert 5 " 1 + (((12 * 4)  / 8) - 2) "
 
+assert 10 "-10+20"
+assert 60 "+ 15*4"
+assert 1 "- (3 * 2) + 7"
+assert 1 "+(4 / 2) - 1"
+
 echo OK
