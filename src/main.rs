@@ -127,22 +127,43 @@ impl TokenStream {
 enum Node {
     ADD(Box<Node>, Box<Node>),
     SUB(Box<Node>, Box<Node>),
+    MUL(Box<Node>, Box<Node>),
+    DIV(Box<Node>, Box<Node>),
     NUM(isize),
 }
 
-// expr := num ("+" num | "-" num)*
+// expr := mul ("+" mul | "-" mul)*
 fn expr(token: &mut TokenStream) -> Node {
-    let mut node = Node::NUM(token.expect_number());
+    let mut node = mul(token);
 
     loop {
         if token.consume('+') {
             let lhs = Box::new(node);
-            let rhs = Box::new(Node::NUM(token.expect_number()));
+            let rhs = Box::new(mul(token));
             node = Node::ADD(lhs, rhs);
         } else if token.consume('-') {
             let lhs = Box::new(node);
-            let rhs = Box::new(Node::NUM(token.expect_number()));
+            let rhs = Box::new(mul(token));
             node = Node::SUB(lhs, rhs);
+        } else {
+            return node;
+        }
+    }
+}
+
+// mul := num ("*" num | "/" num)*
+fn mul(token: &mut TokenStream) -> Node {
+    let mut node = Node::NUM(token.expect_number());
+
+    loop {
+        if token.consume('*') {
+            let lhs = Box::new(node);
+            let rhs = Box::new(Node::NUM(token.expect_number()));
+            node = Node::MUL(lhs, rhs);
+        } else if token.consume('/') {
+            let lhs = Box::new(node);
+            let rhs = Box::new(Node::NUM(token.expect_number()));
+            node = Node::DIV(lhs, rhs);
         } else {
             return node;
         }
@@ -165,6 +186,15 @@ fn gen(node: &Node) {
         Node::SUB(lhs, rhs) => {
             gen_binary_operator(lhs, rhs);
             println!("        sub rax, rdi");
+        }
+        Node::MUL(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        imul rax, rdi");
+        }
+        Node::DIV(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        cqo");
+            println!("        idiv rdi");
         }
         Node::NUM(n) => {
             println!("        push {}", n);
@@ -205,7 +235,7 @@ fn tokenize(src: &str) -> TokenStream {
                 }
             }
 
-            '+' | '-' => token.push(Token::RESERVED(c.to_string(), i)),
+            '+' | '-' | '*' | '/' => token.push(Token::RESERVED(c.to_string(), i)),
 
             // 空白文字をスキップ
             _ if c.is_ascii_whitespace() => continue,
