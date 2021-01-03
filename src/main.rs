@@ -60,6 +60,14 @@ impl TokenStream {
         }
     }
 
+    fn pos(&self) -> usize {
+        match self.peek() {
+            Some(Token::RESERVED(_, pos)) => *pos,
+            Some(Token::NUM(_, _, pos)) => *pos,
+            _ => self.src.len(),
+        }
+    }
+
     // 次のトークンが期待している記号のときには、トークンを1つ読み進めて
     // 真を返す。それ以外の場合には偽を返す。
     fn consume(&mut self, op: char) -> bool {
@@ -75,44 +83,25 @@ impl TokenStream {
     // 次のトークンが期待している記号のときには、トークンを1つ読み進める。
     // それ以外の場合にはエラーを報告する。
     fn expect(&mut self, op: char) {
-        let mut error_pos = None;
-
-        match self.next() {
-            Some(Token::RESERVED(s, pos)) => {
-                if *s == op.to_string() {
-                    return;
-                }
-
-                error_pos = Some(*pos);
+        if let Some(Token::RESERVED(s, _)) = self.peek() {
+            if *s == op.to_string() {
+                self.next();
+                return;
             }
-            Some(Token::NUM(_, _, pos)) => error_pos = Some(*pos),
-            _ => (),
         }
 
-        error_at!(
-            self.src,
-            error_pos.unwrap_or_else(|| self.src.len()),
-            "{}ではありません",
-            op
-        );
+        error_at!(self.src, self.pos(), "{}ではありません", op);
     }
 
     // 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
     // それ以外の場合にはエラーを報告する。
     fn expect_number(&mut self) -> isize {
-        let mut error_pos = None;
-
-        match self.next() {
-            Some(Token::NUM(n, _, _)) => return *n,
-            Some(Token::RESERVED(_, pos)) => error_pos = Some(*pos),
-            _ => (),
+        if let Some(&Token::NUM(n, _, _)) = self.peek() {
+            self.next();
+            return n;
         }
 
-        error_at!(
-            self.src,
-            error_pos.unwrap_or_else(|| self.src.len()),
-            "数ではありません"
-        );
+        error_at!(self.src, self.pos(), "数ではありません");
 
         #[allow(unreachable_code)]
         // 型を合わせるためのダミー
@@ -151,22 +140,33 @@ fn expr(token: &mut TokenStream) -> Node {
     }
 }
 
-// mul := num ("*" num | "/" num)*
+// mul := primary ("*" primary | "/" primary)*
 fn mul(token: &mut TokenStream) -> Node {
-    let mut node = Node::NUM(token.expect_number());
+    let mut node = primary(token);
 
     loop {
         if token.consume('*') {
             let lhs = Box::new(node);
-            let rhs = Box::new(Node::NUM(token.expect_number()));
+            let rhs = Box::new(primary(token));
             node = Node::MUL(lhs, rhs);
         } else if token.consume('/') {
             let lhs = Box::new(node);
-            let rhs = Box::new(Node::NUM(token.expect_number()));
+            let rhs = Box::new(primary(token));
             node = Node::DIV(lhs, rhs);
         } else {
             return node;
         }
+    }
+}
+
+// primary := "(" expr ")" | num
+fn primary(token: &mut TokenStream) -> Node {
+    if token.consume('(') {
+        let node = expr(token);
+        token.expect(')');
+        node
+    } else {
+        Node::NUM(token.expect_number())
     }
 }
 
@@ -235,7 +235,7 @@ fn tokenize(src: &str) -> TokenStream {
                 }
             }
 
-            '+' | '-' | '*' | '/' => token.push(Token::RESERVED(c.to_string(), i)),
+            '+' | '-' | '*' | '/' | '(' | ')' => token.push(Token::RESERVED(c.to_string(), i)),
 
             // 空白文字をスキップ
             _ if c.is_ascii_whitespace() => continue,
@@ -265,6 +265,14 @@ fn main() {
     // トークナイズしてパースする
     let mut token_stream = tokenize(&args[1]);
     let node = expr(&mut token_stream);
+
+    if !token_stream.at_eof() {
+        error_at!(
+            token_stream.src,
+            token_stream.pos(),
+            "余分なトークンがあります"
+        );
+    }
 
     // アセンブリの前半部分を出力
     println!(".intel_syntax noprefix");
