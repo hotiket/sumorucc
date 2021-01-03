@@ -74,7 +74,7 @@ impl TokenStream {
 
     // 次のトークンが期待している記号のときには、トークンを1つ読み進める。
     // それ以外の場合にはエラーを報告する。
-    fn except(&mut self, op: char) {
+    fn expect(&mut self, op: char) {
         let mut error_pos = None;
 
         match self.next() {
@@ -99,7 +99,7 @@ impl TokenStream {
 
     // 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
     // それ以外の場合にはエラーを報告する。
-    fn except_number(&mut self) -> isize {
+    fn expect_number(&mut self) -> isize {
         let mut error_pos = None;
 
         match self.next() {
@@ -132,16 +132,16 @@ enum Node {
 
 // expr := num ("+" num | "-" num)*
 fn expr(token: &mut TokenStream) -> Node {
-    let mut node = Node::NUM(token.except_number());
+    let mut node = Node::NUM(token.expect_number());
 
     loop {
         if token.consume('+') {
             let lhs = Box::new(node);
-            let rhs = Box::new(Node::NUM(token.except_number()));
+            let rhs = Box::new(Node::NUM(token.expect_number()));
             node = Node::ADD(lhs, rhs);
         } else if token.consume('-') {
             let lhs = Box::new(node);
-            let rhs = Box::new(Node::NUM(token.except_number()));
+            let rhs = Box::new(Node::NUM(token.expect_number()));
             node = Node::SUB(lhs, rhs);
         } else {
             return node;
