@@ -45,5 +45,8 @@ assert 0 "0 == 1"
 assert 1 "5+3 == 2*4"
 assert 1 "5+3 == 2*4 == 8-7"
 assert 1 "2 == (4/2+3 == 5) + 1"
+assert 1 "13 != 17"
+assert 0 "19 != 19"
+assert 1 "5*2+3 != 7+5*2 == 1"
 
 echo OK

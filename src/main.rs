@@ -138,6 +138,7 @@ impl TokenStream {
 
 enum Node {
     EQ(Box<Node>, Box<Node>),
+    NEQ(Box<Node>, Box<Node>),
     ADD(Box<Node>, Box<Node>),
     SUB(Box<Node>, Box<Node>),
     MUL(Box<Node>, Box<Node>),
@@ -150,7 +151,7 @@ fn expr(token: &mut TokenStream) -> Node {
     equality(token)
 }
 
-// equality := add ("==" add)*
+// equality := add ("==" add | "!=" add)*
 fn equality(token: &mut TokenStream) -> Node {
     let mut node = add(token);
 
@@ -159,6 +160,10 @@ fn equality(token: &mut TokenStream) -> Node {
             let lhs = Box::new(node);
             let rhs = Box::new(add(token));
             node = Node::EQ(lhs, rhs);
+        } else if token.consume("!=") {
+            let lhs = Box::new(node);
+            let rhs = Box::new(add(token));
+            node = Node::NEQ(lhs, rhs);
         } else {
             return node;
         }
@@ -242,6 +247,12 @@ fn gen(node: &Node) {
             println!("        sete al");
             println!("        movzb rax, al");
         }
+        Node::NEQ(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        cmp rax, rdi");
+            println!("        setne al");
+            println!("        movzb rax, al");
+        }
         Node::ADD(lhs, rhs) => {
             gen_binary_operator(lhs, rhs);
             println!("        add rax, rdi");
@@ -269,7 +280,7 @@ fn gen(node: &Node) {
 }
 
 fn in_operators(test_op: &str) -> bool {
-    let operators = ["==", "+", "-", "*", "/", "(", ")"];
+    let operators = ["==", "!=", "+", "-", "*", "/", "(", ")"];
 
     for op in operators.iter() {
         if op.starts_with(test_op) {
