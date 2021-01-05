@@ -82,13 +82,13 @@ impl TokenStream {
 
     // 次のトークンが期待している記号のときには、トークンを1つ読み進めて
     // 真を返す。それ以外の場合には偽を返す。
-    fn consume(&mut self, op: char) -> bool {
+    fn consume(&mut self, op: &str) -> bool {
         if let Some(Token {
             common,
             kind: TokenKind::RESERVED,
         }) = self.peek()
         {
-            if common.token_str == op.to_string() {
+            if common.token_str == op {
                 self.next();
                 return true;
             }
@@ -98,7 +98,7 @@ impl TokenStream {
 
     // 次のトークンが期待している記号のときには、トークンを1つ読み進める。
     // それ以外の場合にはエラーを報告する。
-    fn expect(&mut self, op: char) {
+    fn expect(&mut self, op: &str) {
         if self.consume(op) {
             return;
         }
@@ -137,6 +137,7 @@ impl TokenStream {
 }
 
 enum Node {
+    EQ(Box<Node>, Box<Node>),
     ADD(Box<Node>, Box<Node>),
     SUB(Box<Node>, Box<Node>),
     MUL(Box<Node>, Box<Node>),
@@ -144,16 +145,36 @@ enum Node {
     NUM(isize),
 }
 
-// expr := mul ("+" mul | "-" mul)*
+// expr := equality
 fn expr(token: &mut TokenStream) -> Node {
+    equality(token)
+}
+
+// equality := add ("==" add)*
+fn equality(token: &mut TokenStream) -> Node {
+    let mut node = add(token);
+
+    loop {
+        if token.consume("==") {
+            let lhs = Box::new(node);
+            let rhs = Box::new(add(token));
+            node = Node::EQ(lhs, rhs);
+        } else {
+            return node;
+        }
+    }
+}
+
+// expr := mul ("+" mul | "-" mul)*
+fn add(token: &mut TokenStream) -> Node {
     let mut node = mul(token);
 
     loop {
-        if token.consume('+') {
+        if token.consume("+") {
             let lhs = Box::new(node);
             let rhs = Box::new(mul(token));
             node = Node::ADD(lhs, rhs);
-        } else if token.consume('-') {
+        } else if token.consume("-") {
             let lhs = Box::new(node);
             let rhs = Box::new(mul(token));
             node = Node::SUB(lhs, rhs);
@@ -168,11 +189,11 @@ fn mul(token: &mut TokenStream) -> Node {
     let mut node = unary(token);
 
     loop {
-        if token.consume('*') {
+        if token.consume("*") {
             let lhs = Box::new(node);
             let rhs = Box::new(unary(token));
             node = Node::MUL(lhs, rhs);
-        } else if token.consume('/') {
+        } else if token.consume("/") {
             let lhs = Box::new(node);
             let rhs = Box::new(unary(token));
             node = Node::DIV(lhs, rhs);
@@ -184,9 +205,9 @@ fn mul(token: &mut TokenStream) -> Node {
 
 // unary := ("+" | "-")? primary
 fn unary(token: &mut TokenStream) -> Node {
-    if token.consume('+') {
+    if token.consume("+") {
         primary(token)
-    } else if token.consume('-') {
+    } else if token.consume("-") {
         let lhs = Box::new(Node::NUM(0));
         let rhs = Box::new(primary(token));
         Node::SUB(lhs, rhs)
@@ -197,9 +218,9 @@ fn unary(token: &mut TokenStream) -> Node {
 
 // primary := "(" expr ")" | num
 fn primary(token: &mut TokenStream) -> Node {
-    if token.consume('(') {
+    if token.consume("(") {
         let node = expr(token);
-        token.expect(')');
+        token.expect(")");
         node
     } else {
         Node::NUM(token.expect_number())
@@ -215,6 +236,12 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node) {
 
 fn gen(node: &Node) {
     match node {
+        Node::EQ(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        cmp rax, rdi");
+            println!("        sete al");
+            println!("        movzb rax, al");
+        }
         Node::ADD(lhs, rhs) => {
             gen_binary_operator(lhs, rhs);
             println!("        add rax, rdi");
@@ -241,20 +268,36 @@ fn gen(node: &Node) {
     println!("        push rax");
 }
 
+fn in_operators(test_op: &str) -> bool {
+    let operators = ["==", "+", "-", "*", "/", "(", ")"];
+
+    for op in operators.iter() {
+        if op.starts_with(test_op) {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn tokenize(src: &str) -> TokenStream {
     let expr: Vec<char> = src.chars().collect();
 
     let mut token = Vec::new();
-    let mut num = (String::new(), 0);
+    // 処理中のトークン
+    // トークン文字列/トークン開始位置からなるタプル
+    let mut in_progress = (String::new(), 0);
 
     for i in 0..expr.len() {
         let c = expr[i];
+        let new_token = format!("{}{}", &in_progress.0, c);
+
         match c {
             '0'..='9' => {
-                if num.0.is_empty() {
-                    num.1 = i;
+                if in_progress.0.is_empty() {
+                    in_progress.1 = i;
                 }
-                num.0.push(c);
+                in_progress.0.push(c);
 
                 let is_last_digit = if i == expr.len() - 1 {
                     true
@@ -264,26 +307,45 @@ fn tokenize(src: &str) -> TokenStream {
                 };
 
                 if is_last_digit {
-                    let n = num.0.parse::<isize>().unwrap();
+                    let n = in_progress.0.parse::<isize>().unwrap();
                     token.push(Token {
                         common: TokenCommon {
-                            token_str: num.0,
-                            pos: num.1,
+                            token_str: in_progress.0,
+                            pos: in_progress.1,
                         },
                         kind: TokenKind::NUM(n),
                     });
 
-                    num.0 = String::new();
+                    in_progress.0 = String::new();
                 }
             }
 
-            '+' | '-' | '*' | '/' | '(' | ')' => token.push(Token {
-                common: TokenCommon {
-                    token_str: c.to_string(),
-                    pos: i,
-                },
-                kind: TokenKind::RESERVED,
-            }),
+            _ if in_operators(&new_token) => {
+                if in_progress.0.is_empty() {
+                    in_progress.1 = i;
+                }
+                in_progress.0.push(c);
+
+                let is_last_char = if i == expr.len() - 1 {
+                    true
+                } else {
+                    let next_c = expr[i + 1];
+                    let next_token = format!("{}{}", &in_progress.0, next_c);
+                    !in_operators(&next_token)
+                };
+
+                if is_last_char {
+                    token.push(Token {
+                        common: TokenCommon {
+                            token_str: in_progress.0,
+                            pos: in_progress.1,
+                        },
+                        kind: TokenKind::RESERVED,
+                    });
+
+                    in_progress.0 = String::new();
+                }
+            }
 
             // 空白文字をスキップ
             _ if c.is_ascii_whitespace() => continue,

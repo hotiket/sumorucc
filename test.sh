@@ -40,4 +40,10 @@ assert 60 "+ 15*4"
 assert 1 "- (3 * 2) + 7"
 assert 1 "+(4 / 2) - 1"
 
+assert 1 "0 == 0"
+assert 0 "0 == 1"
+assert 1 "5+3 == 2*4"
+assert 1 "5+3 == 2*4 == 8-7"
+assert 1 "2 == (4/2+3 == 5) + 1"
+
 echo OK
