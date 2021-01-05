@@ -49,4 +49,18 @@ assert 1 "13 != 17"
 assert 0 "19 != 19"
 assert 1 "5*2+3 != 7+5*2 == 1"
 
+assert 1 "0 < 1"
+assert 0 "1 < 1"
+assert 0 "2 < 1"
+assert 0 "0 > 1"
+assert 0 "1 > 1"
+assert 1 "2 > 1"
+assert 1 "0 <= 1"
+assert 1 "1 <= 1"
+assert 0 "2 <= 1"
+assert 0 "0 >= 1"
+assert 1 "1 >= 1"
+assert 1 "2 >= 1"
+assert 0 "(1+2*3 < 6-5/4) <= 1 != (10 >= 3) + 10 > 9"
+
 echo OK

@@ -139,6 +139,8 @@ impl TokenStream {
 enum Node {
     EQ(Box<Node>, Box<Node>),
     NEQ(Box<Node>, Box<Node>),
+    LT(Box<Node>, Box<Node>),
+    LTE(Box<Node>, Box<Node>),
     ADD(Box<Node>, Box<Node>),
     SUB(Box<Node>, Box<Node>),
     MUL(Box<Node>, Box<Node>),
@@ -151,19 +153,48 @@ fn expr(token: &mut TokenStream) -> Node {
     equality(token)
 }
 
-// equality := add ("==" add | "!=" add)*
+// equality := relational ("==" relational | "!=" relational)*
 fn equality(token: &mut TokenStream) -> Node {
-    let mut node = add(token);
+    let mut node = relational(token);
 
     loop {
         if token.consume("==") {
             let lhs = Box::new(node);
-            let rhs = Box::new(add(token));
+            let rhs = Box::new(relational(token));
             node = Node::EQ(lhs, rhs);
         } else if token.consume("!=") {
             let lhs = Box::new(node);
-            let rhs = Box::new(add(token));
+            let rhs = Box::new(relational(token));
             node = Node::NEQ(lhs, rhs);
+        } else {
+            return node;
+        }
+    }
+}
+
+// relational := add ("<" add | "<=" add | ">" add | ">=" add)*
+fn relational(token: &mut TokenStream) -> Node {
+    let mut node = add(token);
+
+    loop {
+        if token.consume("<") {
+            let lhs = Box::new(node);
+            let rhs = Box::new(add(token));
+            node = Node::LT(lhs, rhs);
+        } else if token.consume("<=") {
+            let lhs = Box::new(node);
+            let rhs = Box::new(add(token));
+            node = Node::LTE(lhs, rhs);
+        } else if token.consume(">") {
+            let lhs = Box::new(node);
+            let rhs = Box::new(add(token));
+            // LTの左右のオペランドを入れ替えてGTにする
+            node = Node::LT(rhs, lhs);
+        } else if token.consume(">=") {
+            let lhs = Box::new(node);
+            let rhs = Box::new(add(token));
+            // LTEの左右のオペランドを入れ替えてGTEにする
+            node = Node::LTE(rhs, lhs);
         } else {
             return node;
         }
@@ -253,6 +284,18 @@ fn gen(node: &Node) {
             println!("        setne al");
             println!("        movzb rax, al");
         }
+        Node::LT(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        cmp rax, rdi");
+            println!("        setl al");
+            println!("        movzb rax, al");
+        }
+        Node::LTE(lhs, rhs) => {
+            gen_binary_operator(lhs, rhs);
+            println!("        cmp rax, rdi");
+            println!("        setle al");
+            println!("        movzb rax, al");
+        }
         Node::ADD(lhs, rhs) => {
             gen_binary_operator(lhs, rhs);
             println!("        add rax, rdi");
@@ -280,7 +323,9 @@ fn gen(node: &Node) {
 }
 
 fn in_operators(test_op: &str) -> bool {
-    let operators = ["==", "!=", "+", "-", "*", "/", "(", ")"];
+    let operators = [
+        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")",
+    ];
 
     for op in operators.iter() {
         if op.starts_with(test_op) {
