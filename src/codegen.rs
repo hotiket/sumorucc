@@ -1,5 +1,6 @@
 use super::parse::Node;
 
+// 左辺の結果をraxに、右辺の結果をrdiにセットする
 fn gen_binary_operator(lhs: &Node, rhs: &Node) {
     gen(lhs);
     gen(rhs);
@@ -7,8 +8,28 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node) {
     println!("        pop rax");
 }
 
+// 変数のアドレスをスタックにプッシュする
+fn gen_lval(node: &Node) {
+    if let Node::LVAR(offset) = node {
+        println!("        mov rax, rbp");
+        println!("        sub rax, {}", offset);
+        println!("        push rax");
+    } else {
+        error!("代入の左辺値が変数ではありません");
+    }
+}
+
 fn gen(node: &Node) {
     match node {
+        Node::ASSIGN(lhs, rhs) => {
+            gen_lval(lhs);
+            gen(rhs);
+            println!("        pop rdi");
+            println!("        pop rax");
+            println!("        mov [rax], rdi");
+            println!("        push rdi");
+            return;
+        }
         Node::EQ(lhs, rhs) => {
             gen_binary_operator(lhs, rhs);
             println!("        cmp rax, rdi");
@@ -54,22 +75,46 @@ fn gen(node: &Node) {
             println!("        push {}", n);
             return;
         }
+        Node::LVAR(_) => {
+            gen_lval(node);
+            println!("        pop rax");
+            println!("        mov rax, [rax]");
+            println!("        push rax");
+            return;
+        }
     }
 
     println!("        push rax");
 }
 
-pub fn codegen(node: &Node) {
+fn prologue(stack_size: usize) {
+    println!("        push rbp");
+    println!("        mov rbp, rsp");
+    println!("        sub rsp, {}", stack_size);
+}
+
+fn epilogue() {
+    println!("        mov rsp, rbp");
+    println!("        pop rbp");
+    println!("        ret");
+}
+
+pub fn codegen(nodes: &[Node]) {
     // アセンブリの前半部分を出力
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
-    // 抽象構文木を下りながらコード生成
-    gen(&node);
+    prologue(8 * 26);
 
-    // スタックトップに式全体の値が残っているはずなので
-    // それをRAXにロードして関数からの返り値とする
-    println!("        pop rax");
-    println!("        ret");
+    for node in nodes {
+        // 抽象構文木を下りながらコード生成
+        gen(node);
+
+        // スタックトップに式全体の値が残っているはずなので
+        // スタックが溢れないようにポップしておく
+        println!("        pop rax");
+    }
+
+    epilogue();
 }

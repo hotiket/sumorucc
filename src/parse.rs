@@ -1,6 +1,7 @@
 use super::tokenize::TokenStream;
 
 pub enum Node {
+    ASSIGN(Box<Node>, Box<Node>),
     EQ(Box<Node>, Box<Node>),
     NEQ(Box<Node>, Box<Node>),
     LT(Box<Node>, Box<Node>),
@@ -10,21 +11,53 @@ pub enum Node {
     MUL(Box<Node>, Box<Node>),
     DIV(Box<Node>, Box<Node>),
     NUM(isize),
+    LVAR(isize),
 }
 
-pub fn parse(token: &mut TokenStream) -> Node {
-    let node = expr(token);
+pub fn parse(token: &mut TokenStream) -> Vec<Node> {
+    let nodes = program(token);
 
     if !token.at_eof() {
         error_at!(token.src, token.pos(), "余分なトークンがあります");
     }
 
+    nodes
+}
+
+// program := stmt*
+fn program(token: &mut TokenStream) -> Vec<Node> {
+    let mut nodes = Vec::new();
+
+    while !token.at_eof() {
+        nodes.push(stmt(token));
+    }
+
+    nodes
+}
+
+// stmt := expr ";"
+fn stmt(token: &mut TokenStream) -> Node {
+    let node = expr(token);
+    token.expect(";");
     node
 }
 
-// expr := equality
+// expr := assign
 fn expr(token: &mut TokenStream) -> Node {
-    equality(token)
+    assign(token)
+}
+
+// assign := equality ("=" assign)?
+fn assign(token: &mut TokenStream) -> Node {
+    let mut node = equality(token);
+
+    if token.consume("=") {
+        let lhs = Box::new(node);
+        let rhs = Box::new(assign(token));
+        node = Node::ASSIGN(lhs, rhs);
+    }
+
+    node
 }
 
 // equality := relational ("==" relational | "!=" relational)*
@@ -126,13 +159,21 @@ fn unary(token: &mut TokenStream) -> Node {
     }
 }
 
-// primary := "(" expr ")" | num
+// primary := "(" expr ")" | num | ident
 fn primary(token: &mut TokenStream) -> Node {
     if token.consume("(") {
         let node = expr(token);
         token.expect(")");
         node
+    } else if let Some(n) = token.consume_number() {
+        Node::NUM(n)
     } else {
-        Node::NUM(token.expect_number())
+        let ident = token.expect_identifier();
+
+        // 変数名からローカル変数のベースポインタからの
+        // オフセットを計算する
+        let ident_char = ident.chars().next().unwrap() as isize;
+        let offset = ((ident_char as isize) - ('a' as isize) + 1) * 8;
+        Node::LVAR(offset)
     }
 }

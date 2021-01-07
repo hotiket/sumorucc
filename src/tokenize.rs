@@ -6,6 +6,8 @@ struct TokenCommon {
 enum TokenKind {
     // 記号
     RESERVED,
+    // 識別子
+    IDENT,
     // 整数
     NUM(isize),
     // 入力の終わりを表すトークン
@@ -67,6 +69,37 @@ impl TokenStream {
         false
     }
 
+    // 次のトークンが数値の場合、トークンを1つ勧めてその数値のSomeを返す。
+    // それ以外の場合にはNoneを返す。
+    pub fn consume_number(&mut self) -> Option<isize> {
+        if let Some(&Token {
+            common: _,
+            kind: TokenKind::NUM(n),
+        }) = self.peek()
+        {
+            self.next();
+            Some(n)
+        } else {
+            None
+        }
+    }
+
+    // 次のトークンが識別子の場合、トークンを1つ勧めてその識別子のSomeを返す。
+    // それ以外の場合にはNoneを返す。
+    pub fn consume_identifier(&mut self) -> Option<String> {
+        if let Some(Token {
+            common,
+            kind: TokenKind::IDENT,
+        }) = self.peek()
+        {
+            let ident = common.token_str.clone();
+            self.next();
+            Some(ident)
+        } else {
+            None
+        }
+    }
+
     // 次のトークンが期待している記号のときには、トークンを1つ読み進める。
     // それ以外の場合にはエラーを報告する。
     pub fn expect(&mut self, op: &str) {
@@ -80,20 +113,29 @@ impl TokenStream {
     // 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
     // それ以外の場合にはエラーを報告する。
     pub fn expect_number(&mut self) -> isize {
-        if let Some(&Token {
-            common: _,
-            kind: TokenKind::NUM(n),
-        }) = self.peek()
-        {
-            self.next();
-            return n;
+        if let Some(n) = self.consume_number() {
+            n
+        } else {
+            error_at!(self.src, self.pos(), "数ではありません");
+
+            #[allow(unreachable_code)]
+            // 型を合わせるためのダミー
+            0
         }
+    }
 
-        error_at!(self.src, self.pos(), "数ではありません");
+    // 次のトークンが識別子の場合、トークンを1つ読み進めてその識別子を返す。
+    // それ以外の場合にはエラーを報告する。
+    pub fn expect_identifier(&mut self) -> String {
+        if let Some(s) = self.consume_identifier() {
+            s
+        } else {
+            error_at!(self.src, self.pos(), "識別子ではありません");
 
-        #[allow(unreachable_code)]
-        // 型を合わせるためのダミー
-        0
+            #[allow(unreachable_code)]
+            // 型を合わせるためのダミー
+            String::new()
+        }
     }
 
     pub fn at_eof(&self) -> bool {
@@ -107,13 +149,13 @@ impl TokenStream {
     }
 }
 
-fn in_operators(test_op: &str) -> bool {
-    let operators = [
-        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")",
+fn is_reserved(test_op: &str) -> bool {
+    let symbols = [
+        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";",
     ];
 
-    for op in operators.iter() {
-        if op.starts_with(test_op) {
+    for symbol in symbols.iter() {
+        if symbol.starts_with(test_op) {
             return true;
         }
     }
@@ -161,7 +203,7 @@ pub fn tokenize(src: &str) -> TokenStream {
                 }
             }
 
-            _ if in_operators(&new_token) => {
+            _ if is_reserved(&new_token) => {
                 if in_progress.0.is_empty() {
                     in_progress.1 = i;
                 }
@@ -172,7 +214,7 @@ pub fn tokenize(src: &str) -> TokenStream {
                 } else {
                     let next_c = expr[i + 1];
                     let next_token = format!("{}{}", &in_progress.0, next_c);
-                    !in_operators(&next_token)
+                    !is_reserved(&next_token)
                 };
 
                 if is_last_char {
@@ -186,6 +228,21 @@ pub fn tokenize(src: &str) -> TokenStream {
 
                     in_progress.0 = String::new();
                 }
+            }
+
+            'a'..='z' => {
+                in_progress.1 = i;
+                in_progress.0.push(c);
+
+                token.push(Token {
+                    common: TokenCommon {
+                        token_str: in_progress.0,
+                        pos: in_progress.1,
+                    },
+                    kind: TokenKind::IDENT,
+                });
+
+                in_progress.0 = String::new();
             }
 
             // 空白文字をスキップ
