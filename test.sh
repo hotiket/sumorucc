@@ -68,4 +68,6 @@ assert 2 "z=2; z;"
 assert 30 "a=1; b=2; c=3; a=b=c; a*10;"
 assert 123 "x = 2 >= 0; y = (x * x) + (x / x); z = -x * (4 - 5) + y; x*100 + y*10 + z;"
 
+assert 72 "val001_num=3*4*6; val002_div=val001_num/6; val003_power=val002_div*val002_div; val003_power/2;"
+
 echo OK

@@ -43,7 +43,7 @@ fn main() {
 
     // トークナイズしてパースする
     let mut token_stream = tokenize(&args[1]);
-    let node = parse(&mut token_stream);
+    let (node, add_info) = parse(&mut token_stream);
 
-    codegen(&node);
+    codegen(&node, &add_info);
 }

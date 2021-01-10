@@ -163,95 +163,85 @@ fn is_reserved(test_op: &str) -> bool {
     false
 }
 
+fn is_ident_1(c: char) -> bool {
+    ('a'..='z').contains(&c) || ('A'..='Z').contains(&c) || '_' == c
+}
+
+fn is_ident_2(c: char) -> bool {
+    is_ident_1(c) || ('0'..='9').contains(&c)
+}
+
 pub fn tokenize(src: &str) -> TokenStream {
     let expr: Vec<char> = src.chars().collect();
 
     let mut token = Vec::new();
-    // 処理中のトークン
-    // トークン文字列/トークン開始位置からなるタプル
-    let mut in_progress = (String::new(), 0);
 
-    for i in 0..expr.len() {
-        let c = expr[i];
-        let new_token = format!("{}{}", &in_progress.0, c);
+    let mut i = 0;
+    while let Some(c) = expr.get(i) {
+        let mut token_str = c.to_string();
+        let pos = i;
 
         match c {
             '0'..='9' => {
-                if in_progress.0.is_empty() {
-                    in_progress.1 = i;
+                for c in expr.iter().skip(i + 1) {
+                    if ('0'..='9').contains(c) {
+                        token_str.push(*c);
+                        i += 1;
+                    } else {
+                        break;
+                    }
                 }
-                in_progress.0.push(c);
 
-                let is_last_digit = if i == expr.len() - 1 {
-                    true
-                } else {
-                    let next_c = expr[i + 1];
-                    !('0'..='9').contains(&next_c)
-                };
-
-                if is_last_digit {
-                    let n = in_progress.0.parse::<isize>().unwrap();
-                    token.push(Token {
-                        common: TokenCommon {
-                            token_str: in_progress.0,
-                            pos: in_progress.1,
-                        },
-                        kind: TokenKind::NUM(n),
-                    });
-
-                    in_progress.0 = String::new();
-                }
+                let n = token_str.parse::<isize>().unwrap();
+                token.push(Token {
+                    common: TokenCommon { token_str, pos },
+                    kind: TokenKind::NUM(n),
+                });
             }
 
-            _ if is_reserved(&new_token) => {
-                if in_progress.0.is_empty() {
-                    in_progress.1 = i;
+            _ if is_reserved(&token_str) => {
+                for c in expr.iter().skip(i + 1) {
+                    token_str.push(*c);
+                    if is_reserved(&token_str) {
+                        i += 1;
+                    } else {
+                        token_str.pop();
+                        break;
+                    }
                 }
-                in_progress.0.push(c);
-
-                let is_last_char = if i == expr.len() - 1 {
-                    true
-                } else {
-                    let next_c = expr[i + 1];
-                    let next_token = format!("{}{}", &in_progress.0, next_c);
-                    !is_reserved(&next_token)
-                };
-
-                if is_last_char {
-                    token.push(Token {
-                        common: TokenCommon {
-                            token_str: in_progress.0,
-                            pos: in_progress.1,
-                        },
-                        kind: TokenKind::RESERVED,
-                    });
-
-                    in_progress.0 = String::new();
-                }
-            }
-
-            'a'..='z' => {
-                in_progress.1 = i;
-                in_progress.0.push(c);
 
                 token.push(Token {
-                    common: TokenCommon {
-                        token_str: in_progress.0,
-                        pos: in_progress.1,
-                    },
+                    common: TokenCommon { token_str, pos },
+                    kind: TokenKind::RESERVED,
+                });
+            }
+
+            _ if is_ident_1(*c) => {
+                for c in expr.iter().skip(i + 1) {
+                    token_str.push(*c);
+                    if is_ident_2(*c) {
+                        i += 1;
+                    } else {
+                        token_str.pop();
+                        break;
+                    }
+                }
+
+                token.push(Token {
+                    common: TokenCommon { token_str, pos },
                     kind: TokenKind::IDENT,
                 });
-
-                in_progress.0 = String::new();
             }
 
             // 空白文字をスキップ
-            _ if c.is_ascii_whitespace() => continue,
+            _ if c.is_ascii_whitespace() => (),
 
             _ => {
                 error_at!(src, i, "トークナイズできません");
             }
         }
+
+        i += 1;
     }
 
     token.push(Token {

@@ -1,4 +1,4 @@
-use super::parse::Node;
+use super::parse::{AdditionalInfo, Node};
 
 // 左辺の結果をraxに、右辺の結果をrdiにセットする
 fn gen_binary_operator(lhs: &Node, rhs: &Node) {
@@ -99,13 +99,21 @@ fn epilogue() {
     println!("        ret");
 }
 
-pub fn codegen(nodes: &[Node]) {
+pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
     // アセンブリの前半部分を出力
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
-    prologue(8 * 26);
+    // ローカル変数はRBPからのオフセット順に並んでいるので
+    // 最後の要素のオフセットがスタックサイズとなる
+    let stack_size = if let Some(lvar) = add_info.lvars.last() {
+        lvar.offset
+    } else {
+        0
+    };
+
+    prologue(stack_size);
 
     for node in nodes {
         // 抽象構文木を下りながらコード生成
