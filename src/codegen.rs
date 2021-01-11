@@ -21,6 +21,13 @@ fn gen_lval(node: &Node) {
 
 fn gen(node: &Node) {
     match node {
+        Node::RETURN(child) => {
+            gen(child);
+            // childの結果を戻り値としてポップしておく
+            println!("        pop rax");
+            epilogue();
+            return;
+        }
         Node::ASSIGN(lhs, rhs) => {
             gen_lval(lhs);
             gen(rhs);

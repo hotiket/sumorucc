@@ -8,6 +8,8 @@ enum TokenKind {
     RESERVED,
     // 識別子
     IDENT,
+    // キーワード
+    KEYWORD,
     // 整数
     NUM(isize),
     // 入力の終わりを表すトークン
@@ -69,8 +71,8 @@ impl TokenStream {
         false
     }
 
-    // 次のトークンが数値の場合、トークンを1つ勧めてその数値のSomeを返す。
-    // それ以外の場合にはNoneを返す。
+    // 次のトークンが数値の場合、トークンを1つ読み進めて
+    // その数値のSomeを返す。それ以外の場合にはNoneを返す。
     pub fn consume_number(&mut self) -> Option<isize> {
         if let Some(&Token {
             common: _,
@@ -84,8 +86,8 @@ impl TokenStream {
         }
     }
 
-    // 次のトークンが識別子の場合、トークンを1つ勧めてその識別子のSomeを返す。
-    // それ以外の場合にはNoneを返す。
+    // 次のトークンが識別子の場合、トークンを1つ読み進めて
+    // その識別子のSomeを返す。それ以外の場合にはNoneを返す。
     pub fn consume_identifier(&mut self) -> Option<String> {
         if let Some(Token {
             common,
@@ -100,6 +102,22 @@ impl TokenStream {
         }
     }
 
+    // 次のトークンが期待しているキーワードの場合、トークンを
+    // 1つ読み進めて真を返すそれ以外の場合には偽を返す。
+    pub fn consume_keyword(&mut self, keyword: &str) -> bool {
+        if let Some(Token {
+            common,
+            kind: TokenKind::KEYWORD,
+        }) = self.peek()
+        {
+            if common.token_str == keyword {
+                self.next();
+                return true;
+            }
+        }
+        false
+    }
+
     // 次のトークンが期待している記号のときには、トークンを1つ読み進める。
     // それ以外の場合にはエラーを報告する。
     pub fn expect(&mut self, op: &str) {
@@ -108,20 +126,6 @@ impl TokenStream {
         }
 
         error_at!(self.src, self.pos(), "{}ではありません", op);
-    }
-
-    // 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
-    // それ以外の場合にはエラーを報告する。
-    pub fn expect_number(&mut self) -> isize {
-        if let Some(n) = self.consume_number() {
-            n
-        } else {
-            error_at!(self.src, self.pos(), "数ではありません");
-
-            #[allow(unreachable_code)]
-            // 型を合わせるためのダミー
-            0
-        }
     }
 
     // 次のトークンが識別子の場合、トークンを1つ読み進めてその識別子を返す。
@@ -154,7 +158,7 @@ fn is_reserved(test_op: &str) -> bool {
         "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";",
     ];
 
-    for symbol in symbols.iter() {
+    for symbol in &symbols {
         if symbol.starts_with(test_op) {
             return true;
         }
@@ -171,6 +175,18 @@ fn is_ident_2(c: char) -> bool {
     is_ident_1(c) || ('0'..='9').contains(&c)
 }
 
+fn is_keyword(s: &str) -> bool {
+    let keywords = ["return"];
+
+    for keyword in &keywords {
+        if s == *keyword {
+            return true;
+        }
+    }
+
+    false
+}
+
 pub fn tokenize(src: &str) -> TokenStream {
     let expr: Vec<char> = src.chars().collect();
 
@@ -182,6 +198,7 @@ pub fn tokenize(src: &str) -> TokenStream {
         let pos = i;
 
         match c {
+            // 数値
             '0'..='9' => {
                 for c in expr.iter().skip(i + 1) {
                     if ('0'..='9').contains(c) {
@@ -199,6 +216,7 @@ pub fn tokenize(src: &str) -> TokenStream {
                 });
             }
 
+            // "+", "*", ";"といった記号
             _ if is_reserved(&token_str) => {
                 for c in expr.iter().skip(i + 1) {
                     token_str.push(*c);
@@ -216,6 +234,7 @@ pub fn tokenize(src: &str) -> TokenStream {
                 });
             }
 
+            // 識別子とキーワード
             _ if is_ident_1(*c) => {
                 for c in expr.iter().skip(i + 1) {
                     token_str.push(*c);
@@ -227,10 +246,14 @@ pub fn tokenize(src: &str) -> TokenStream {
                     }
                 }
 
-                token.push(Token {
-                    common: TokenCommon { token_str, pos },
-                    kind: TokenKind::IDENT,
-                });
+                let kind = if is_keyword(&token_str) {
+                    TokenKind::KEYWORD
+                } else {
+                    TokenKind::IDENT
+                };
+                let common = TokenCommon { token_str, pos };
+
+                token.push(Token { common, kind });
             }
 
             // 空白文字をスキップ
