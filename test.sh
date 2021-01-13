@@ -73,4 +73,8 @@ assert 72 "val001_num=3*4*6; val002_div=val001_num/6; val003_power=val002_div*va
 assert 5 "n0 = 5; return n0; n1 = 3; return n1;"
 assert 3 "return 3; 100;"
 
+assert 2 "a = 1; if (a == 0) return 0; return a + 1;"
+assert 1 "x = 1; if (x == 1) if (2 == 2) return 1; return 0;"
+assert 24 "t = 20; u = 0; v = 10; if (t) v = v + 2; if (u) v = 0; return v*2;"
+
 echo OK

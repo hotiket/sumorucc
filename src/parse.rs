@@ -2,6 +2,7 @@ use super::tokenize::TokenStream;
 
 pub enum Node {
     RETURN(Box<Node>),
+    IF(Box<Node>, Box<Node>),
     ASSIGN(Box<Node>, Box<Node>),
     EQ(Box<Node>, Box<Node>),
     NEQ(Box<Node>, Box<Node>),
@@ -50,12 +51,22 @@ fn program(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> 
     nodes
 }
 
-// stmt := "return" expr ";" | expr ";"
+// stmt := "return" expr ";"
+//       | "if" "(" expr ")" stmt
+//       | expr ";"
 fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume_keyword("return") {
         let node = expr(token, add_info);
         token.expect(";");
         Node::RETURN(Box::new(node))
+    } else if token.consume_keyword("if") {
+        token.expect("(");
+        let cond_node = expr(token, add_info);
+        token.expect(")");
+
+        let then_node = stmt(token, add_info);
+
+        Node::IF(Box::new(cond_node), Box::new(then_node))
     } else {
         let node = expr(token, add_info);
         token.expect(";");
