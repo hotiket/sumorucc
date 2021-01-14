@@ -155,7 +155,7 @@ impl TokenStream {
 
 fn is_reserved(test_op: &str) -> bool {
     let symbols = [
-        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";",
+        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}",
     ];
 
     for symbol in &symbols {

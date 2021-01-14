@@ -1,6 +1,7 @@
 use super::tokenize::TokenStream;
 
 pub enum Node {
+    Block(Vec<Node>),
     Return(Box<Node>),
     If(Box<Node>, Box<Node>),
     IfElse(Box<Node>, Box<Node>, Box<Node>),
@@ -53,6 +54,7 @@ fn program(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> 
 }
 
 // stmt := "return" expr ";"
+//       | "{" compound_stmt
 //       | "if" "(" expr ")" stmt ("else" stmt)?
 //       | expr ";"
 fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
@@ -60,6 +62,8 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         let node = expr(token, add_info);
         token.expect(";");
         Node::Return(Box::new(node))
+    } else if token.consume("{") {
+        compound_stmt(token, add_info)
     } else if token.consume_keyword("if") {
         token.expect("(");
         let cond_node = expr(token, add_info);
@@ -82,6 +86,17 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         token.expect(";");
         node
     }
+}
+
+// compound_stmt := stmt* "}"
+fn compound_stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+    let mut nodes = Vec::new();
+
+    while !token.consume("}") {
+        nodes.push(stmt(token, add_info));
+    }
+
+    Node::Block(nodes)
 }
 
 // expr := assign

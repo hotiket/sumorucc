@@ -24,11 +24,24 @@ fn gen_lval(node: &Node) {
 }
 
 fn gen(node: &Node, ctx: &mut Context) {
-    // NOTE: gen呼び出し元でスタックをポップするので
+    // NOTE: Blockを除き、文を一つ実行する度にスタックをポップするので
     //       なんらかの値を必ずプッシュしておく必要がある
     //       式だけでなく、if文などの制御構文もプッシュすること
 
     match node {
+        Node::Block(nodes) => {
+            for node in nodes {
+                gen(node, ctx);
+
+                if !matches!(node, Node::Block(_)) {
+                    // スタックトップに式全体の値が残っているはずなので
+                    // スタックが溢れないようにポップしておく
+                    println!("        pop rax");
+                }
+            }
+
+            return;
+        }
         Node::If(cond_node, then_node) => {
             let label = ctx.label;
             ctx.label += 1;
@@ -162,6 +175,10 @@ fn epilogue() {
 }
 
 pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
+    if nodes.is_empty() || nodes.len() > 1 || !matches!(nodes[0], Node::Block(_)) {
+        error!("プログラムはブロックで囲まれている必要があります");
+    }
+
     // アセンブリの前半部分を出力
     println!(".intel_syntax noprefix");
     println!(".global main");
@@ -178,15 +195,7 @@ pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
     prologue(stack_size);
 
     let mut ctx = Context { label: 0 };
-
-    for node in nodes {
-        // 抽象構文木を下りながらコード生成
-        gen(node, &mut ctx);
-
-        // スタックトップに式全体の値が残っているはずなので
-        // スタックが溢れないようにポップしておく
-        println!("        pop rax");
-    }
+    gen(&nodes[0], &mut ctx);
 
     epilogue();
 }
