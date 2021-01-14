@@ -51,6 +51,31 @@ fn gen(node: &Node, ctx: &mut Context) {
             // なにかしらの値をスタックに積む必要があるので
             // returnせずにgenの最後でプッシュする
         }
+        Node::IfElse(cond_node, then_node, else_node) => {
+            let label = ctx.label;
+            ctx.label += 1;
+
+            gen(cond_node, ctx);
+            // 条件式の結果を判定用にポップしておく
+            println!("        pop rax");
+            // 0だったら偽としてelse節にジャンプする
+            println!("        cmp rax, 0");
+            println!("        je .Lelse{}", label);
+
+            gen(then_node, ctx);
+            // then節が終わったらif文の終わりにジャンプ
+            println!("        jmp .Lend{}", label);
+
+            println!(".Lelse{}:", label);
+            gen(else_node, ctx);
+
+            println!(".Lend{}:", label);
+            // then節、else節の結果をポップして捨てる
+            println!("        pop rax");
+
+            // なにかしらの値をスタックに積む必要があるので
+            // returnせずにgenの最後でプッシュする
+        }
         Node::Return(child) => {
             gen(child, ctx);
             // childの結果を戻り値としてポップしておく

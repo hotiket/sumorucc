@@ -176,7 +176,7 @@ fn is_ident_2(c: char) -> bool {
 }
 
 fn is_keyword(s: &str) -> bool {
-    let keywords = ["return", "if"];
+    let keywords = ["return", "if", "else"];
 
     for keyword in &keywords {
         if s == *keyword {

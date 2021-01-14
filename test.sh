@@ -76,5 +76,7 @@ assert 3 "return 3; 100;"
 assert 2 "a = 1; if (a == 0) return 0; return a + 1;"
 assert 1 "x = 1; if (x == 1) if (2 == 2) return 1; return 0;"
 assert 24 "t = 20; u = 0; v = 10; if (t) v = v + 2; if (u) v = 0; return v*2;"
+assert 1 "if (0 == 1) return 0; else return 1; return 2;"
+assert 1 "a = 5; if (a) a = a*2; else a = 0; if (a != 10) return 0; else if (a == 10) return 1; else return 2;"
 
 echo OK
