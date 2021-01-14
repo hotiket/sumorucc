@@ -1,19 +1,19 @@
 use super::tokenize::TokenStream;
 
 pub enum Node {
-    RETURN(Box<Node>),
-    IF(Box<Node>, Box<Node>),
-    ASSIGN(Box<Node>, Box<Node>),
-    EQ(Box<Node>, Box<Node>),
-    NEQ(Box<Node>, Box<Node>),
+    Return(Box<Node>),
+    If(Box<Node>, Box<Node>),
+    Assign(Box<Node>, Box<Node>),
+    Eq(Box<Node>, Box<Node>),
+    Neq(Box<Node>, Box<Node>),
     LT(Box<Node>, Box<Node>),
     LTE(Box<Node>, Box<Node>),
-    ADD(Box<Node>, Box<Node>),
-    SUB(Box<Node>, Box<Node>),
-    MUL(Box<Node>, Box<Node>),
-    DIV(Box<Node>, Box<Node>),
-    NUM(isize),
-    LVAR(usize),
+    Add(Box<Node>, Box<Node>),
+    Sub(Box<Node>, Box<Node>),
+    Mul(Box<Node>, Box<Node>),
+    Div(Box<Node>, Box<Node>),
+    Num(isize),
+    LVar(usize),
 }
 
 pub struct LVar {
@@ -58,7 +58,7 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume_keyword("return") {
         let node = expr(token, add_info);
         token.expect(";");
-        Node::RETURN(Box::new(node))
+        Node::Return(Box::new(node))
     } else if token.consume_keyword("if") {
         token.expect("(");
         let cond_node = expr(token, add_info);
@@ -66,7 +66,7 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
         let then_node = stmt(token, add_info);
 
-        Node::IF(Box::new(cond_node), Box::new(then_node))
+        Node::If(Box::new(cond_node), Box::new(then_node))
     } else {
         let node = expr(token, add_info);
         token.expect(";");
@@ -86,7 +86,7 @@ fn assign(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume("=") {
         let lhs = Box::new(node);
         let rhs = Box::new(assign(token, add_info));
-        node = Node::ASSIGN(lhs, rhs);
+        node = Node::Assign(lhs, rhs);
     }
 
     node
@@ -100,11 +100,11 @@ fn equality(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         if token.consume("==") {
             let lhs = Box::new(node);
             let rhs = Box::new(relational(token, add_info));
-            node = Node::EQ(lhs, rhs);
+            node = Node::Eq(lhs, rhs);
         } else if token.consume("!=") {
             let lhs = Box::new(node);
             let rhs = Box::new(relational(token, add_info));
-            node = Node::NEQ(lhs, rhs);
+            node = Node::Neq(lhs, rhs);
         } else {
             return node;
         }
@@ -148,11 +148,11 @@ fn add(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         if token.consume("+") {
             let lhs = Box::new(node);
             let rhs = Box::new(mul(token, add_info));
-            node = Node::ADD(lhs, rhs);
+            node = Node::Add(lhs, rhs);
         } else if token.consume("-") {
             let lhs = Box::new(node);
             let rhs = Box::new(mul(token, add_info));
-            node = Node::SUB(lhs, rhs);
+            node = Node::Sub(lhs, rhs);
         } else {
             return node;
         }
@@ -167,11 +167,11 @@ fn mul(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         if token.consume("*") {
             let lhs = Box::new(node);
             let rhs = Box::new(unary(token, add_info));
-            node = Node::MUL(lhs, rhs);
+            node = Node::Mul(lhs, rhs);
         } else if token.consume("/") {
             let lhs = Box::new(node);
             let rhs = Box::new(unary(token, add_info));
-            node = Node::DIV(lhs, rhs);
+            node = Node::Div(lhs, rhs);
         } else {
             return node;
         }
@@ -183,9 +183,9 @@ fn unary(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume("+") {
         primary(token, add_info)
     } else if token.consume("-") {
-        let lhs = Box::new(Node::NUM(0));
+        let lhs = Box::new(Node::Num(0));
         let rhs = Box::new(primary(token, add_info));
-        Node::SUB(lhs, rhs)
+        Node::Sub(lhs, rhs)
     } else {
         primary(token, add_info)
     }
@@ -198,7 +198,7 @@ fn primary(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         token.expect(")");
         node
     } else if let Some(n) = token.consume_number() {
-        Node::NUM(n)
+        Node::Num(n)
     } else {
         let name = token.expect_identifier();
 
@@ -227,6 +227,6 @@ fn primary(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
             offset
         };
 
-        Node::LVAR(offset)
+        Node::LVar(offset)
     }
 }

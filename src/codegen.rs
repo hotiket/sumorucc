@@ -14,7 +14,7 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
 
 // 変数のアドレスをスタックにプッシュする
 fn gen_lval(node: &Node) {
-    if let Node::LVAR(offset) = node {
+    if let Node::LVar(offset) = node {
         println!("        mov rax, rbp");
         println!("        sub rax, {}", offset);
         println!("        push rax");
@@ -29,7 +29,7 @@ fn gen(node: &Node, ctx: &mut Context) {
     //       式だけでなく、if文などの制御構文もプッシュすること
 
     match node {
-        Node::IF(cond_node, then_node) => {
+        Node::If(cond_node, then_node) => {
             let label = ctx.label;
             ctx.label += 1;
 
@@ -51,14 +51,14 @@ fn gen(node: &Node, ctx: &mut Context) {
             // なにかしらの値をスタックに積む必要があるので
             // returnせずにgenの最後でプッシュする
         }
-        Node::RETURN(child) => {
+        Node::Return(child) => {
             gen(child, ctx);
             // childの結果を戻り値としてポップしておく
             println!("        pop rax");
             epilogue();
             return;
         }
-        Node::ASSIGN(lhs, rhs) => {
+        Node::Assign(lhs, rhs) => {
             gen_lval(lhs);
             gen(rhs, ctx);
             println!("        pop rdi");
@@ -67,13 +67,13 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        push rdi");
             return;
         }
-        Node::EQ(lhs, rhs) => {
+        Node::Eq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cmp rax, rdi");
             println!("        sete al");
             println!("        movzb rax, al");
         }
-        Node::NEQ(lhs, rhs) => {
+        Node::Neq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cmp rax, rdi");
             println!("        setne al");
@@ -91,28 +91,28 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        setle al");
             println!("        movzb rax, al");
         }
-        Node::ADD(lhs, rhs) => {
+        Node::Add(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        add rax, rdi");
         }
-        Node::SUB(lhs, rhs) => {
+        Node::Sub(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        sub rax, rdi");
         }
-        Node::MUL(lhs, rhs) => {
+        Node::Mul(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        imul rax, rdi");
         }
-        Node::DIV(lhs, rhs) => {
+        Node::Div(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cqo");
             println!("        idiv rdi");
         }
-        Node::NUM(n) => {
+        Node::Num(n) => {
             println!("        push {}", n);
             return;
         }
-        Node::LVAR(_) => {
+        Node::LVar(_) => {
             gen_lval(node);
             println!("        pop rax");
             println!("        mov rax, [rax]");
