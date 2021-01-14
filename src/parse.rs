@@ -3,8 +3,7 @@ use super::tokenize::TokenStream;
 pub enum Node {
     Block(Vec<Node>),
     Return(Box<Node>),
-    If(Box<Node>, Box<Node>),
-    IfElse(Box<Node>, Box<Node>, Box<Node>),
+    If(Box<Node>, Box<Node>, Option<Box<Node>>),
     Assign(Box<Node>, Box<Node>),
     Eq(Box<Node>, Box<Node>),
     Neq(Box<Node>, Box<Node>),
@@ -66,21 +65,18 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         compound_stmt(token, add_info)
     } else if token.consume_keyword("if") {
         token.expect("(");
-        let cond_node = expr(token, add_info);
+        let cond_node = Box::new(expr(token, add_info));
         token.expect(")");
 
-        let then_node = stmt(token, add_info);
+        let then_node = Box::new(stmt(token, add_info));
 
-        if token.consume_keyword("else") {
-            let else_node = stmt(token, add_info);
-            Node::IfElse(
-                Box::new(cond_node),
-                Box::new(then_node),
-                Box::new(else_node),
-            )
+        let else_node = if token.consume_keyword("else") {
+            Some(Box::new(stmt(token, add_info)))
         } else {
-            Node::If(Box::new(cond_node), Box::new(then_node))
-        }
+            None
+        };
+
+        Node::If(cond_node, then_node, else_node)
     } else {
         let node = expr(token, add_info);
         token.expect(";");

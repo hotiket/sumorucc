@@ -42,49 +42,42 @@ fn gen(node: &Node, ctx: &mut Context) {
 
             return;
         }
-        Node::If(cond_node, then_node) => {
+        Node::If(cond_node, then_node, else_node) => {
             let label = ctx.label;
             ctx.label += 1;
 
             gen(cond_node, ctx);
             // 条件式の結果を判定用にポップしておく
             println!("        pop rax");
-            // 0だったら偽としてif文の終わりにジャンプする
+            // 0が偽、0以外は真なので0と比較する
             println!("        cmp rax, 0");
-            println!("        je .Lend{}", label);
 
-            gen(then_node, ctx);
-            // .Lendのあとでスタックにプッシュするので
-            // if文全体として一つの値がプッシュされるように
-            // thenの結果はポップしておく
-            println!("        pop rax");
+            if let Some(else_node) = else_node {
+                // 0だったら偽としてelse節にジャンプする
+                println!("        je .Lelse{}", label);
 
-            println!(".Lend{}:", label);
+                gen(then_node, ctx);
+                // then節が終わったらif文の終わりにジャンプ
+                println!("        jmp .Lend{}", label);
 
-            // なにかしらの値をスタックに積む必要があるので
-            // returnせずにgenの最後でプッシュする
-        }
-        Node::IfElse(cond_node, then_node, else_node) => {
-            let label = ctx.label;
-            ctx.label += 1;
+                println!(".Lelse{}:", label);
+                gen(else_node, ctx);
 
-            gen(cond_node, ctx);
-            // 条件式の結果を判定用にポップしておく
-            println!("        pop rax");
-            // 0だったら偽としてelse節にジャンプする
-            println!("        cmp rax, 0");
-            println!("        je .Lelse{}", label);
+                println!(".Lend{}:", label);
+                // then節、else節の結果をポップして捨てる
+                println!("        pop rax");
+            } else {
+                // 0だったら偽としてif文の終わりにジャンプする
+                println!("        je .Lend{}", label);
 
-            gen(then_node, ctx);
-            // then節が終わったらif文の終わりにジャンプ
-            println!("        jmp .Lend{}", label);
+                gen(then_node, ctx);
+                // .Lendのあとでスタックにプッシュするので
+                // if文全体として一つの値がプッシュされるように
+                // thenの結果はポップしておく
+                println!("        pop rax");
 
-            println!(".Lelse{}:", label);
-            gen(else_node, ctx);
-
-            println!(".Lend{}:", label);
-            // then節、else節の結果をポップして捨てる
-            println!("        pop rax");
+                println!(".Lend{}:", label);
+            }
 
             // なにかしらの値をスタックに積む必要があるので
             // returnせずにgenの最後でプッシュする
