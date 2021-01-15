@@ -4,99 +4,84 @@ struct Context {
     label: usize,
 }
 
-// 左辺の結果をraxに、右辺の結果をrdiにセットする
-fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
-    gen(lhs, ctx);
-    gen(rhs, ctx);
-    println!("        pop rdi");
-    println!("        pop rax");
+enum Register {
+    RDI,
+    RBP,
 }
 
-// 変数のアドレスをスタックにプッシュする
+fn push() {
+    println!("        push rax");
+}
+
+fn pop(reg: Register) {
+    let s = match reg {
+        Register::RDI => "rdi",
+        Register::RBP => "rbp",
+    };
+
+    println!("        pop {}", s);
+}
+
+// 左辺の結果をraxに、右辺の結果をrdiにセットする
+fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
+    gen(rhs, ctx);
+    push();
+    gen(lhs, ctx);
+    pop(Register::RDI);
+}
+
+// 変数のアドレスをraxにmovする
 fn gen_lval(node: &Node) {
     if let Node::LVar(offset) = node {
         println!("        mov rax, rbp");
         println!("        sub rax, {}", offset);
-        println!("        push rax");
     } else {
         error!("代入の左辺値が変数ではありません");
     }
 }
 
 fn gen(node: &Node, ctx: &mut Context) {
-    // NOTE: Blockを除き、文を一つ実行する度にスタックをポップするので
-    //       なんらかの値を必ずプッシュしておく必要がある
-    //       式だけでなく、if文などの制御構文もプッシュすること
-
     match node {
         Node::Block(nodes) => {
             for node in nodes {
                 gen(node, ctx);
-
-                if !matches!(node, Node::Block(_)) {
-                    // スタックトップに式全体の値が残っているはずなので
-                    // スタックが溢れないようにポップしておく
-                    println!("        pop rax");
-                }
             }
-
-            return;
         }
         Node::If(cond_node, then_node, else_node) => {
             let label = ctx.label;
             ctx.label += 1;
 
             gen(cond_node, ctx);
-            // 条件式の結果を判定用にポップしておく
-            println!("        pop rax");
             // 0が偽、0以外は真なので0と比較する
             println!("        cmp rax, 0");
 
+            // 0だったら偽としてelse節にジャンプする
+            println!("        je .Lelse{}", label);
+
+            gen(then_node, ctx);
+            // then節が終わったらif文の終わりにジャンプ
+            println!("        jmp .Lend{}", label);
+
+            println!(".Lelse{}:", label);
+
+            // else節があれば出力する
             if let Some(else_node) = else_node {
-                // 0だったら偽としてelse節にジャンプする
-                println!("        je .Lelse{}", label);
-
-                gen(then_node, ctx);
-                // then節が終わったらif文の終わりにジャンプ
-                println!("        jmp .Lend{}", label);
-
-                println!(".Lelse{}:", label);
                 gen(else_node, ctx);
-
-                println!(".Lend{}:", label);
-                // then節、else節の結果をポップして捨てる
-                println!("        pop rax");
-            } else {
-                // 0だったら偽としてif文の終わりにジャンプする
-                println!("        je .Lend{}", label);
-
-                gen(then_node, ctx);
-                // .Lendのあとでスタックにプッシュするので
-                // if文全体として一つの値がプッシュされるように
-                // thenの結果はポップしておく
-                println!("        pop rax");
-
-                println!(".Lend{}:", label);
             }
 
-            // なにかしらの値をスタックに積む必要があるので
-            // returnせずにgenの最後でプッシュする
+            println!(".Lend{}:", label);
         }
         Node::Return(child) => {
             gen(child, ctx);
-            // childの結果を戻り値としてポップしておく
-            println!("        pop rax");
             epilogue();
-            return;
         }
         Node::Assign(lhs, rhs) => {
-            gen_lval(lhs);
             gen(rhs, ctx);
-            println!("        pop rdi");
-            println!("        pop rax");
+            push();
+            gen_lval(lhs);
+            pop(Register::RDI);
             println!("        mov [rax], rdi");
-            println!("        push rdi");
-            return;
+            println!("        mov rax, rdi");
         }
         Node::Eq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
@@ -140,19 +125,13 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        idiv rdi");
         }
         Node::Num(n) => {
-            println!("        push {}", n);
-            return;
+            println!("        mov rax, {}", n);
         }
         Node::LVar(_) => {
             gen_lval(node);
-            println!("        pop rax");
             println!("        mov rax, [rax]");
-            println!("        push rax");
-            return;
         }
     }
-
-    println!("        push rax");
 }
 
 fn prologue(stack_size: usize) {
@@ -163,7 +142,7 @@ fn prologue(stack_size: usize) {
 
 fn epilogue() {
     println!("        mov rsp, rbp");
-    println!("        pop rbp");
+    pop(Register::RBP);
     println!("        ret");
 }
 
