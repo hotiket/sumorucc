@@ -64,10 +64,7 @@ fn gen(node: &Node, ctx: &mut Context) {
 
             println!(".Lelse{}:", label);
 
-            // else節があれば出力する
-            if let Some(else_node) = else_node {
-                gen(else_node, ctx);
-            }
+            gen(else_node, ctx);
 
             println!(".Lend{}:", label);
         }

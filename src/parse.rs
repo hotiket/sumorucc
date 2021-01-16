@@ -3,7 +3,7 @@ use super::tokenize::TokenStream;
 pub enum Node {
     Block(Vec<Node>),
     Return(Box<Node>),
-    If(Box<Node>, Box<Node>, Option<Box<Node>>),
+    If(Box<Node>, Box<Node>, Box<Node>),
     For(Box<Node>, Box<Node>, Box<Node>, Box<Node>),
     Assign(Box<Node>, Box<Node>),
     Eq(Box<Node>, Box<Node>),
@@ -74,9 +74,9 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         let then_node = Box::new(stmt(token, add_info));
 
         let else_node = if token.consume_keyword("else") {
-            Some(Box::new(stmt(token, add_info)))
+            Box::new(stmt(token, add_info))
         } else {
-            None
+            Box::new(Node::Block(Vec::new()))
         };
 
         Node::If(cond_node, then_node, else_node)
