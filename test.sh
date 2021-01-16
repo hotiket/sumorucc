@@ -83,4 +83,7 @@ assert 8 "{a=b=c=d=e=0;if(a==0){b=a+1;if(b==1){c=b+1;if(c==1){return 0;}else{d=c
 assert 4 "{a = 1; {b = a + 1; {return b * b;}} {return a;}}"
 assert 0 "{a=0; {{{{{{{{{{{{{{1;}}}}}}}}}}}}}} return a;}"
 
+assert 1 "{;;;;; return 1;}"
+assert 100 "{a=100; if (a==0); else; return a;}"
+
 echo OK

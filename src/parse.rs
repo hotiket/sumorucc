@@ -55,7 +55,7 @@ fn program(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> 
 // stmt := "return" expr ";"
 //       | "{" compound_stmt
 //       | "if" "(" expr ")" stmt ("else" stmt)?
-//       | expr ";"
+//       | expr_stmt ";"
 fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume_keyword("return") {
         let node = expr(token, add_info);
@@ -78,9 +78,7 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
         Node::If(cond_node, then_node, else_node)
     } else {
-        let node = expr(token, add_info);
-        token.expect(";");
-        node
+        expr_stmt(token, add_info)
     }
 }
 
@@ -93,6 +91,17 @@ fn compound_stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node
     }
 
     Node::Block(nodes)
+}
+
+// expr_stmt := expr? ";"
+fn expr_stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+    if token.consume(";") {
+        Node::Block(Vec::new())
+    } else {
+        let node = expr(token, add_info);
+        token.expect(";");
+        node
+    }
 }
 
 // expr := assign
