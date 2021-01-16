@@ -71,6 +71,26 @@ fn gen(node: &Node, ctx: &mut Context) {
 
             println!(".Lend{}:", label);
         }
+        Node::For(init_node, cond_node, update_node, body_node) => {
+            let label = ctx.label;
+            ctx.label += 1;
+
+            gen(init_node, ctx);
+
+            println!(".Lbegin{}:", label);
+
+            gen(cond_node, ctx);
+            // 0が偽、0以外は真なので0と比較する
+            println!("        cmp rax, 0");
+            println!("        je .Lend{}", label);
+
+            gen(body_node, ctx);
+
+            gen(update_node, ctx);
+
+            println!("        jmp .Lbegin{}", label);
+            println!(".Lend{}:", label);
+        }
         Node::Return(child) => {
             gen(child, ctx);
             epilogue();

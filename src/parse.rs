@@ -4,6 +4,7 @@ pub enum Node {
     Block(Vec<Node>),
     Return(Box<Node>),
     If(Box<Node>, Box<Node>, Option<Box<Node>>),
+    For(Box<Node>, Box<Node>, Box<Node>, Box<Node>),
     Assign(Box<Node>, Box<Node>),
     Eq(Box<Node>, Box<Node>),
     Neq(Box<Node>, Box<Node>),
@@ -55,6 +56,7 @@ fn program(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> 
 // stmt := "return" expr ";"
 //       | "{" compound_stmt
 //       | "if" "(" expr ")" stmt ("else" stmt)?
+//       | "for" "(" expr_stmt expr? ";" expr? ")" stmt
 //       | expr_stmt ";"
 fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume_keyword("return") {
@@ -77,6 +79,31 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         };
 
         Node::If(cond_node, then_node, else_node)
+    } else if token.consume_keyword("for") {
+        token.expect("(");
+
+        let init_node = Box::new(expr_stmt(token, add_info));
+
+        let cond_node = if token.consume(";") {
+            // 終了条件が無い場合は非0の値に置き換える
+            Box::new(Node::Num(1))
+        } else {
+            let node = Box::new(expr(token, add_info));
+            token.expect(";");
+            node
+        };
+
+        let update_node = if token.consume(")") {
+            Box::new(Node::Block(Vec::new()))
+        } else {
+            let node = Box::new(expr(token, add_info));
+            token.expect(")");
+            node
+        };
+
+        let body_node = Box::new(stmt(token, add_info));
+
+        Node::For(init_node, cond_node, update_node, body_node)
     } else {
         expr_stmt(token, add_info)
     }

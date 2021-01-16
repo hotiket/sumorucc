@@ -86,4 +86,8 @@ assert 0 "{a=0; {{{{{{{{{{{{{{1;}}}}}}}}}}}}}} return a;}"
 assert 1 "{;;;;; return 1;}"
 assert 100 "{a=100; if (a==0); else; return a;}"
 
+assert 55 "{sum=0; for(i=1; i<=10; i=i+1){sum=sum+i;} return sum;}"
+assert 42 "{for(;;) return 42; return 0;}"
+assert 4 "{a=1; for(a=2; ; a=3){a=4; return a;} return 0;}"
+
 echo OK
