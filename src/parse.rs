@@ -57,6 +57,7 @@ fn program(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> 
 //       | "{" compound_stmt
 //       | "if" "(" expr ")" stmt ("else" stmt)?
 //       | "for" "(" expr_stmt expr? ";" expr? ")" stmt
+//       | "while" "(" expr ")" stmt
 //       | expr_stmt ";"
 fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if token.consume_keyword("return") {
@@ -103,6 +104,20 @@ fn stmt(token: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
         let body_node = Box::new(stmt(token, add_info));
 
+        Node::For(init_node, cond_node, update_node, body_node)
+    } else if token.consume_keyword("while") {
+        let init_node = Box::new(Node::Block(Vec::new()));
+        let update_node = Box::new(Node::Block(Vec::new()));
+
+        token.expect("(");
+
+        let cond_node = Box::new(expr(token, add_info));
+
+        token.expect(")");
+
+        let body_node = Box::new(stmt(token, add_info));
+
+        // initとupdateが空のfor文として生成する
         Node::For(init_node, cond_node, update_node, body_node)
     } else {
         expr_stmt(token, add_info)

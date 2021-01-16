@@ -90,4 +90,7 @@ assert 55 "{sum=0; for(i=1; i<=10; i=i+1){sum=sum+i;} return sum;}"
 assert 42 "{for(;;) return 42; return 0;}"
 assert 4 "{a=1; for(a=2; ; a=3){a=4; return a;} return 0;}"
 
+assert 55 "{sum=0; i=1; while (i<=10) { sum=sum+i; i=i+1; } return sum;}"
+assert 36 "{a=3; while(0) a=0; b=c=0; while(a>0){b=1; while(b<=3){c=c+a*b; b=b+1;} a=a-1;} return c;}"
+
 echo OK
