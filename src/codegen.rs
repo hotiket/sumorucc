@@ -1,4 +1,4 @@
-use super::parse::{AdditionalInfo, Node};
+use super::parse::{AdditionalInfo, Node, NodeKind};
 
 struct Context {
     label: usize,
@@ -32,22 +32,22 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
 
 // 変数のアドレスをraxにmovする
 fn gen_lval(node: &Node) {
-    if let Node::LVar(offset) = node {
+    if let NodeKind::LVar(offset) = node.kind {
         println!("        mov rax, rbp");
         println!("        sub rax, {}", offset);
     } else {
-        error!("代入の左辺値が変数ではありません");
+        error_tok!(node.token, "代入の左辺値が変数ではありません");
     }
 }
 
 fn gen(node: &Node, ctx: &mut Context) {
-    match node {
-        Node::Block(nodes) => {
+    match &node.kind {
+        NodeKind::Block(nodes) => {
             for node in nodes {
                 gen(node, ctx);
             }
         }
-        Node::If(cond_node, then_node, else_node) => {
+        NodeKind::If(cond_node, then_node, else_node) => {
             let label = ctx.label;
             ctx.label += 1;
 
@@ -68,7 +68,7 @@ fn gen(node: &Node, ctx: &mut Context) {
 
             println!(".Lend{}:", label);
         }
-        Node::For(init_node, cond_node, update_node, body_node) => {
+        NodeKind::For(init_node, cond_node, update_node, body_node) => {
             let label = ctx.label;
             ctx.label += 1;
 
@@ -88,11 +88,11 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        jmp .Lbegin{}", label);
             println!(".Lend{}:", label);
         }
-        Node::Return(child) => {
+        NodeKind::Return(child) => {
             gen(child, ctx);
             epilogue();
         }
-        Node::Assign(lhs, rhs) => {
+        NodeKind::Assign(lhs, rhs) => {
             gen(rhs, ctx);
             push();
             gen_lval(lhs);
@@ -100,51 +100,51 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        mov [rax], rdi");
             println!("        mov rax, rdi");
         }
-        Node::Eq(lhs, rhs) => {
+        NodeKind::Eq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cmp rax, rdi");
             println!("        sete al");
             println!("        movzb rax, al");
         }
-        Node::Neq(lhs, rhs) => {
+        NodeKind::Neq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cmp rax, rdi");
             println!("        setne al");
             println!("        movzb rax, al");
         }
-        Node::LT(lhs, rhs) => {
+        NodeKind::LT(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cmp rax, rdi");
             println!("        setl al");
             println!("        movzb rax, al");
         }
-        Node::LTE(lhs, rhs) => {
+        NodeKind::LTE(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cmp rax, rdi");
             println!("        setle al");
             println!("        movzb rax, al");
         }
-        Node::Add(lhs, rhs) => {
+        NodeKind::Add(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        add rax, rdi");
         }
-        Node::Sub(lhs, rhs) => {
+        NodeKind::Sub(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        sub rax, rdi");
         }
-        Node::Mul(lhs, rhs) => {
+        NodeKind::Mul(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        imul rax, rdi");
         }
-        Node::Div(lhs, rhs) => {
+        NodeKind::Div(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cqo");
             println!("        idiv rdi");
         }
-        Node::Num(n) => {
+        NodeKind::Num(n) => {
             println!("        mov rax, {}", n);
         }
-        Node::LVar(_) => {
+        NodeKind::LVar(_) => {
             gen_lval(node);
             println!("        mov rax, [rax]");
         }
@@ -164,7 +164,10 @@ fn epilogue() {
 }
 
 pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
-    if nodes.is_empty() || nodes.len() > 1 || !matches!(nodes[0], Node::Block(_)) {
+    if nodes.is_empty()
+        || nodes.len() > 1
+        || !matches!(nodes[0], Node{token: _, kind: NodeKind::Block(_)})
+    {
         error!("プログラムはブロックで囲まれている必要があります");
     }
 

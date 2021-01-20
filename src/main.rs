@@ -26,6 +26,15 @@ macro_rules! error_at {
     };
 }
 
+macro_rules! error_tok {
+    ($tok:expr, $fmt:expr) => {
+        error_at!($tok.common.src, $tok.common.pos, $fmt);
+    };
+    ($tok:expr, $fmt:expr, $($arg:tt)*) => {
+        error_at!($tok.common.src, $tok.common.pos, $fmt, $($arg)*);
+    };
+}
+
 mod codegen;
 mod parse;
 mod tokenize;
@@ -42,8 +51,8 @@ fn main() {
     }
 
     // トークナイズしてパースする
-    let mut token_stream = tokenize(&args[1]);
-    let (node, add_info) = parse(&mut token_stream);
+    let token = tokenize(&args[1]);
+    let (node, add_info) = parse(&token);
 
     codegen(&node, &add_info);
 }
