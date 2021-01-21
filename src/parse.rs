@@ -23,6 +23,8 @@ pub enum NodeKind<'token, 'vec> {
     Sub(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
     Mul(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
     Div(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
+    Addr(Box<Node<'token, 'vec>>),
+    Deref(Box<Node<'token, 'vec>>),
     Num(isize),
     LVar(usize),
 }
@@ -317,17 +319,23 @@ fn mul<'token, 'vec>(
     }
 }
 
-// unary := ("+" | "-")? primary
+// unary := (("+" | "-" | "&" | "*")? unary) | primary
 fn unary<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
 ) -> Node<'token, 'vec> {
     if stream.consume("+").is_some() {
-        primary(stream, add_info)
+        unary(stream, add_info)
     } else if let Some(token) = stream.consume("-") {
         let lhs = Box::new(Node::new(token, NodeKind::Num(0)));
-        let rhs = Box::new(primary(stream, add_info));
+        let rhs = Box::new(unary(stream, add_info));
         Node::new(token, NodeKind::Sub(lhs, rhs))
+    } else if let Some(token) = stream.consume("&") {
+        let operand = Box::new(unary(stream, add_info));
+        Node::new(token, NodeKind::Addr(operand))
+    } else if let Some(token) = stream.consume("*") {
+        let operand = Box::new(unary(stream, add_info));
+        Node::new(token, NodeKind::Deref(operand))
     } else {
         primary(stream, add_info)
     }

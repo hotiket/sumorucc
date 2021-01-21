@@ -31,12 +31,18 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
 }
 
 // 変数のアドレスをraxにmovする
-fn gen_lval(node: &Node) {
-    if let NodeKind::LVar(offset) = node.kind {
-        println!("        mov rax, rbp");
-        println!("        sub rax, {}", offset);
-    } else {
-        error_tok!(node.token, "代入の左辺値が変数ではありません");
+fn gen_lval(node: &Node, ctx: &mut Context) {
+    match &node.kind {
+        NodeKind::LVar(offset) => {
+            println!("        mov rax, rbp");
+            println!("        sub rax, {}", offset);
+        }
+        NodeKind::Deref(operand) => {
+            gen(operand, ctx);
+        }
+        _ => {
+            error_tok!(node.token, "代入の左辺値が変数ではありません");
+        }
     }
 }
 
@@ -95,7 +101,7 @@ fn gen(node: &Node, ctx: &mut Context) {
         NodeKind::Assign(lhs, rhs) => {
             gen(rhs, ctx);
             push();
-            gen_lval(lhs);
+            gen_lval(lhs, ctx);
             pop(Register::RDI);
             println!("        mov [rax], rdi");
             println!("        mov rax, rdi");
@@ -141,11 +147,18 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        cqo");
             println!("        idiv rdi");
         }
+        NodeKind::Addr(operand) => {
+            gen_lval(operand, ctx);
+        }
+        NodeKind::Deref(_) => {
+            gen_lval(node, ctx);
+            println!("        mov rax, [rax]");
+        }
         NodeKind::Num(n) => {
             println!("        mov rax, {}", n);
         }
         NodeKind::LVar(_) => {
-            gen_lval(node);
+            gen_lval(node, ctx);
             println!("        mov rax, [rax]");
         }
     }

@@ -93,4 +93,9 @@ assert 4 "{a=1; for(a=2; ; a=3){a=4; return a;} return 0;}"
 assert 55 "{sum=0; i=1; while (i<=10) { sum=sum+i; i=i+1; } return sum;}"
 assert 36 "{a=3; while(0) a=0; b=c=0; while(a>0){b=1; while(b<=3){c=c+a*b; b=b+1;} a=a-1;} return c;}"
 
+assert 5 "{x=5; return *&*&x;}"
+assert 4 "{x=1; y=&x; *y=4; return x;}"
+assert 3 "{x=2; y=&x; return *y+1;}"
+assert 10 "{x=0; y=0; *(&y+8) = 10; return x;}"
+
 echo OK
