@@ -179,7 +179,7 @@ fn epilogue() {
 pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
     if nodes.is_empty()
         || nodes.len() > 1
-        || !matches!(nodes[0], Node{token: _, kind: NodeKind::Block(_)})
+        || !matches!(nodes[0], Node{kind: NodeKind::Block(_), ..})
     {
         error!("プログラムはブロックで囲まれている必要があります");
     }

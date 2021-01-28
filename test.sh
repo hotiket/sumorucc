@@ -94,8 +94,8 @@ assert 55 "{sum=0; i=1; while (i<=10) { sum=sum+i; i=i+1; } return sum;}"
 assert 36 "{a=3; while(0) a=0; b=c=0; while(a>0){b=1; while(b<=3){c=c+a*b; b=b+1;} a=a-1;} return c;}"
 
 assert 5 "{x=5; return *&*&x;}"
-assert 4 "{x=1; y=&x; *y=4; return x;}"
-assert 3 "{x=2; y=&x; return *y+1;}"
-assert 10 "{x=0; y=0; *(&y+8) = 10; return x;}"
+assert 10 "{x=0; y=0; *(&y+1) = 10; return x;}"
+assert 20 "{x=0; y=0; *(&x-2+1) = 20; return y;}"
+assert 2 "{x=0; y=0; z=0; return &x-&z;}"
 
 echo OK

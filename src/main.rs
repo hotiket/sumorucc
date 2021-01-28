@@ -36,6 +36,7 @@ macro_rules! error_tok {
 }
 
 mod codegen;
+mod ctype;
 mod parse;
 mod tokenize;
 

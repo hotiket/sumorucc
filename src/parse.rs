@@ -1,3 +1,4 @@
+use super::ctype::CType;
 use super::tokenize::{Token, TokenStream};
 
 pub enum NodeKind<'token, 'vec> {
@@ -32,14 +33,23 @@ pub enum NodeKind<'token, 'vec> {
 pub struct Node<'token, 'vec> {
     pub token: &'vec Token<'token>,
     pub kind: NodeKind<'token, 'vec>,
+    pub ctype: CType,
 }
 
 impl<'token, 'vec> Node<'token, 'vec> {
-    fn new(token: &'vec Token<'token>, kind: NodeKind<'token, 'vec>) -> Self {
-        Node { token, kind }
+    pub fn new(token: &'vec Token<'token>, mut kind: NodeKind<'token, 'vec>) -> Self {
+        let ctype_ret = CType::new(token, &mut kind);
+
+        if let Err(reason) = ctype_ret {
+            error_tok!(token, "{}", reason);
+        }
+
+        let ctype = ctype_ret.unwrap();
+
+        Node { token, kind, ctype }
     }
 
-    fn null_statement(token: &'vec Token<'token>) -> Self {
+    pub fn null_statement(token: &'vec Token<'token>) -> Self {
         Self::new(token, NodeKind::Block(Vec::new()))
     }
 }
