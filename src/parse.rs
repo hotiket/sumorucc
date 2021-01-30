@@ -59,19 +59,54 @@ pub struct LVar {
     pub name: String,
     // RBPからのオフセット
     pub offset: usize,
-    // 変数のサイズ
-    pub size: usize,
+    // 変数の型
+    pub ctype: CType,
 }
 
 pub struct AdditionalInfo {
     pub lvars: Vec<LVar>,
 }
 
+impl AdditionalInfo {
+    pub fn new() -> Self {
+        Self { lvars: Vec::new() }
+    }
+
+    pub fn add_lvar(&mut self, name: &str, ctype: CType, token: &Token) {
+        // ローカル変数がすでに宣言されているかチェック
+        let lvar = self.find_lvar(name);
+        if lvar.is_some() {
+            error_tok!(token, "すでに宣言されています");
+        }
+
+        // ローカル変数を新しく登録する
+        let offset = if let Some(lvar) = self.lvars.last() {
+            // ローカル変数のリストになければ、リスト最後の
+            // ローカル変数の次に配置する
+            lvar.offset + lvar.ctype.size()
+        } else {
+            // ローカル変数のリスト自体が空ならスタックに
+            // 積まれているRBPの次となる8から始める
+            8
+        };
+
+        self.lvars.push(LVar {
+            name: name.to_string(),
+            offset,
+            ctype,
+        });
+    }
+
+    pub fn find_lvar(&self, name: &str) -> Option<&LVar> {
+        self.lvars.iter().find(|lvar| lvar.name == name)
+    }
+}
+
 pub fn parse<'token, 'vec>(
     token: &'vec [Token<'token>],
 ) -> (Vec<Node<'token, 'vec>>, AdditionalInfo) {
     let mut stream = TokenStream::new(token);
-    let mut add_info = AdditionalInfo { lvars: Vec::new() };
+    let mut add_info = AdditionalInfo::new();
     let nodes = program(&mut stream, &mut add_info);
 
     if !stream.at_eof() {
@@ -177,7 +212,7 @@ fn stmt<'token, 'vec>(
     }
 }
 
-// compound_stmt := stmt* "}"
+// compound_stmt := (("int" ident ";") | stmt)* "}"
 fn compound_stmt<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
@@ -186,7 +221,15 @@ fn compound_stmt<'token, 'vec>(
     let mut token = stream.consume("}");
 
     while token.is_none() {
-        nodes.push(stmt(stream, add_info));
+        if stream.consume_keyword("int").is_some() {
+            let ctype = CType::Int;
+            let (token, name) = stream.expect_identifier();
+            add_info.add_lvar(&name, ctype, token);
+            stream.expect(";");
+        } else {
+            nodes.push(stmt(stream, add_info));
+        }
+
         token = stream.consume("}");
     }
 
@@ -366,29 +409,11 @@ fn primary<'token, 'vec>(
         let (token, name) = stream.expect_identifier();
 
         // ローカル変数のスタックのオフセットを取得
-        let offset = if let Some(lv) = add_info.lvars.iter().find(|lv| lv.name == name) {
-            // ローカル変数のリストにあればそのオフセットを使う
-            lv.offset
-        } else {
-            let offset = if let Some(lv) = add_info.lvars.last() {
-                // ローカル変数のリストになければ、リスト最後の
-                // ローカル変数の次に配置する
-                lv.offset + lv.size
-            } else {
-                // ローカル変数のリスト自体が空ならスタックに
-                // 積まれているRBPの次となる8から始める
-                8
-            };
-
-            add_info.lvars.push(LVar {
-                name,
-                offset,
-                // 変数はintしかないので8固定
-                size: 8,
-            });
-
-            offset
-        };
+        let lvar = add_info.find_lvar(&name);
+        if lvar.is_none() {
+            error_tok!(token, "宣言されていません");
+        }
+        let offset = lvar.unwrap().offset;
 
         Node::new(token, NodeKind::LVar(offset))
     }
