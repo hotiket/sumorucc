@@ -20,7 +20,7 @@ macro_rules! error_at {
     };
     ($src:expr, $at:expr, $fmt:expr, $($arg:tt)*) => {
         eprintln!("{}", $src);
-        eprintln!("{}^", " ".repeat($at));
+        eprint!("{}^ ", " ".repeat($at));
         eprintln!($fmt, $($arg)*);
         std::process::exit(1);
     };
