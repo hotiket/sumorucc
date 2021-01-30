@@ -33,7 +33,7 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
 // 変数のアドレスをraxにmovする
 fn gen_lval(node: &Node, ctx: &mut Context) {
     match &node.kind {
-        NodeKind::LVar(offset) => {
+        NodeKind::LVar(_, _, offset) => {
             println!("        mov rax, rbp");
             println!("        sub rax, {}", offset);
         }
@@ -157,7 +157,7 @@ fn gen(node: &Node, ctx: &mut Context) {
         NodeKind::Num(n) => {
             println!("        mov rax, {}", n);
         }
-        NodeKind::LVar(_) => {
+        NodeKind::LVar(..) => {
             gen_lval(node, ctx);
             println!("        mov rax, [rax]");
         }

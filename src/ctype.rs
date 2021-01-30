@@ -68,7 +68,7 @@ impl CType {
                 _ => Err(invalid_operand),
             },
             NodeKind::Num(..) => Ok(Self::Int),
-            NodeKind::LVar(..) => Ok(Self::Int),
+            NodeKind::LVar(_, ctype, _) => Ok(ctype.clone()),
         }
     }
 

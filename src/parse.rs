@@ -4,11 +4,13 @@ use super::tokenize::{Token, TokenStream};
 pub enum NodeKind<'token, 'vec> {
     Block(Vec<Node<'token, 'vec>>),
     Return(Box<Node<'token, 'vec>>),
+    // cond, then, else
     If(
         Box<Node<'token, 'vec>>,
         Box<Node<'token, 'vec>>,
         Box<Node<'token, 'vec>>,
     ),
+    // init, cond, update, body
     For(
         Box<Node<'token, 'vec>>,
         Box<Node<'token, 'vec>>,
@@ -27,7 +29,8 @@ pub enum NodeKind<'token, 'vec> {
     Addr(Box<Node<'token, 'vec>>),
     Deref(Box<Node<'token, 'vec>>),
     Num(isize),
-    LVar(usize),
+    // name, type, offset
+    LVar(String, CType, usize),
 }
 
 pub struct Node<'token, 'vec> {
@@ -212,7 +215,7 @@ fn stmt<'token, 'vec>(
     }
 }
 
-// compound_stmt := (("int" ident ";") | stmt)* "}"
+// compound_stmt := (("int" "*"* ident ";") | stmt)* "}"
 fn compound_stmt<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
@@ -222,9 +225,14 @@ fn compound_stmt<'token, 'vec>(
 
     while token.is_none() {
         if stream.consume_keyword("int").is_some() {
-            let ctype = CType::Int;
+            let mut ctype = CType::Int;
+            while stream.consume("*").is_some() {
+                ctype = CType::Pointer(Box::new(ctype));
+            }
+
             let (token, name) = stream.expect_identifier();
             add_info.add_lvar(&name, ctype, token);
+
             stream.expect(";");
         } else {
             nodes.push(stmt(stream, add_info));
@@ -413,8 +421,9 @@ fn primary<'token, 'vec>(
         if lvar.is_none() {
             error_tok!(token, "宣言されていません");
         }
-        let offset = lvar.unwrap().offset;
+        let lvar = lvar.unwrap();
+        let offset = lvar.offset;
 
-        Node::new(token, NodeKind::LVar(offset))
+        Node::new(token, NodeKind::LVar(name, lvar.ctype.clone(), offset))
     }
 }

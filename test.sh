@@ -97,5 +97,8 @@ assert 5 "{int x; x=5; return *&*&x;}"
 assert 10 "{int x; int y; x=0; y=0; *(&y+1) = 10; return x;}"
 assert 20 "{int x; int y; x=0; y=0; *(&x-2+1) = 20; return y;}"
 assert 2 "{int x; int y; int z; x=0; y=0; z=0; return &x-&z;}"
+assert 4 "{int x; int* y; x=1; y=&x; *y=4; return x;}"
+assert 3 "{int x; int *y; x=2; y=&x; return *y+1;}"
+assert 21 "{int x; int *y; int** z; y=&x; z=&y; **z=21; return x;}"
 
 echo OK
