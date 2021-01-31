@@ -55,6 +55,18 @@ impl<'token, 'vec> Node<'token, 'vec> {
     pub fn null_statement(token: &'vec Token<'token>) -> Self {
         Self::new(token, NodeKind::Block(Vec::new()))
     }
+
+    pub fn lvar(name: String, token: &'vec Token<'token>, add_info: &AdditionalInfo) -> Self {
+        // ローカル変数のスタックのオフセットを取得
+        let lvar = add_info.find_lvar(&name);
+        if lvar.is_none() {
+            error_tok!(token, "宣言されていません");
+        }
+        let lvar = lvar.unwrap();
+        let offset = lvar.offset;
+
+        Self::new(token, NodeKind::LVar(name, lvar.ctype.clone(), offset))
+    }
 }
 
 pub struct LVar {
@@ -224,7 +236,9 @@ fn compound_stmt<'token, 'vec>(
     let mut token = stream.consume("}");
 
     while token.is_none() {
-        if !declaration(stream, add_info) {
+        if let Some(init_nodes) = declaration(stream, add_info) {
+            nodes.extend(init_nodes);
+        } else {
             nodes.push(stmt(stream, add_info));
         }
 
@@ -234,27 +248,58 @@ fn compound_stmt<'token, 'vec>(
     Node::new(token.unwrap(), NodeKind::Block(nodes))
 }
 
-// declaration := "int" declarator ";"
+// declaration := "int" init_declarator
 fn declaration<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
-) -> bool {
+) -> Option<Vec<Node<'token, 'vec>>> {
     if stream.consume_keyword("int").is_some() {
         let ctype = CType::Int;
-        declarator(stream, add_info, ctype);
-        stream.expect(";");
-        true
+        let init_nodes = init_declarator(stream, add_info, &ctype);
+        Some(init_nodes)
     } else {
-        false
+        None
     }
 }
 
-// declarator := "*"* ident ("," declarator)*
+// init_declarator := (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+fn init_declarator<'token, 'vec>(
+    stream: &mut TokenStream<'token, 'vec>,
+    add_info: &mut AdditionalInfo,
+    base: &CType,
+) -> Vec<Node<'token, 'vec>> {
+    let mut init_nodes = Vec::new();
+
+    if stream.consume(";").is_some() {
+        return init_nodes;
+    }
+
+    loop {
+        let (ident_name, ident_token) = declarator(stream, add_info, base);
+
+        if let Some(assign_token) = stream.consume("=") {
+            let lhs = Box::new(Node::lvar(ident_name, ident_token, add_info));
+            let rhs = Box::new(expr(stream, add_info));
+            let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
+            init_nodes.push(init_node);
+        }
+
+        if stream.consume(",").is_none() {
+            break;
+        }
+    }
+
+    stream.expect(";");
+
+    init_nodes
+}
+
+// declarator := "*"* ident
 fn declarator<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
-    base: CType,
-) {
+    base: &CType,
+) -> (String, &'vec Token<'token>) {
     let mut ctype = base.clone();
     while stream.consume("*").is_some() {
         ctype = CType::Pointer(Box::new(ctype));
@@ -262,10 +307,7 @@ fn declarator<'token, 'vec>(
 
     let (token, name) = stream.expect_identifier();
     add_info.add_lvar(&name, ctype, token);
-
-    if stream.consume(",").is_some() {
-        declarator(stream, add_info, base);
-    }
+    (name, token)
 }
 
 // expr_stmt := expr? ";"
@@ -439,15 +481,6 @@ fn primary<'token, 'vec>(
         Node::new(token, NodeKind::Num(n))
     } else {
         let (token, name) = stream.expect_identifier();
-
-        // ローカル変数のスタックのオフセットを取得
-        let lvar = add_info.find_lvar(&name);
-        if lvar.is_none() {
-            error_tok!(token, "宣言されていません");
-        }
-        let lvar = lvar.unwrap();
-        let offset = lvar.offset;
-
-        Node::new(token, NodeKind::LVar(name, lvar.ctype.clone(), offset))
+        Node::lvar(name, token, add_info)
     }
 }
