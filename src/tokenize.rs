@@ -171,7 +171,7 @@ impl<'token, 'vec> TokenStream<'token, 'vec> {
 
 fn is_reserved(test_op: &str) -> bool {
     let symbols = [
-        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}", "&",
+        "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}", "&", ",",
     ];
 
     for symbol in &symbols {

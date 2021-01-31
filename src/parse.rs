@@ -215,7 +215,7 @@ fn stmt<'token, 'vec>(
     }
 }
 
-// compound_stmt := (("int" "*"* ident ";") | stmt)* "}"
+// compound_stmt := (declaration | stmt)* "}"
 fn compound_stmt<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
@@ -224,17 +224,7 @@ fn compound_stmt<'token, 'vec>(
     let mut token = stream.consume("}");
 
     while token.is_none() {
-        if stream.consume_keyword("int").is_some() {
-            let mut ctype = CType::Int;
-            while stream.consume("*").is_some() {
-                ctype = CType::Pointer(Box::new(ctype));
-            }
-
-            let (token, name) = stream.expect_identifier();
-            add_info.add_lvar(&name, ctype, token);
-
-            stream.expect(";");
-        } else {
+        if !declaration(stream, add_info) {
             nodes.push(stmt(stream, add_info));
         }
 
@@ -242,6 +232,40 @@ fn compound_stmt<'token, 'vec>(
     }
 
     Node::new(token.unwrap(), NodeKind::Block(nodes))
+}
+
+// declaration := "int" declarator ";"
+fn declaration<'token, 'vec>(
+    stream: &mut TokenStream<'token, 'vec>,
+    add_info: &mut AdditionalInfo,
+) -> bool {
+    if stream.consume_keyword("int").is_some() {
+        let ctype = CType::Int;
+        declarator(stream, add_info, ctype);
+        stream.expect(";");
+        true
+    } else {
+        false
+    }
+}
+
+// declarator := "*"* ident ("," declarator)*
+fn declarator<'token, 'vec>(
+    stream: &mut TokenStream<'token, 'vec>,
+    add_info: &mut AdditionalInfo,
+    base: CType,
+) {
+    let mut ctype = base.clone();
+    while stream.consume("*").is_some() {
+        ctype = CType::Pointer(Box::new(ctype));
+    }
+
+    let (token, name) = stream.expect_identifier();
+    add_info.add_lvar(&name, ctype, token);
+
+    if stream.consume(",").is_some() {
+        declarator(stream, add_info, base);
+    }
 }
 
 // expr_stmt := expr? ";"
