@@ -1,11 +1,18 @@
 #!/bin/bash
 
+TEST_FN_FILE="tmp_fn.o"
+
+cat <<EOF | cc -xc -c -o "$TEST_FN_FILE" -
+int ret3(){return 3;}
+int ret5(){return 5;}
+EOF
+
 assert() {
 	expected="$1"
 	input="$2"
 
 	target/debug/rcc "$input" >tmp.s
-	cc -o tmp tmp.s
+	cc -o tmp tmp.s "$TEST_FN_FILE"
 	./tmp
 	actual="$?"
 
@@ -101,5 +108,8 @@ assert 4 "{int x=1, *y=&x; *y=4; return x;}"
 assert 3 "{int x=2, *y=&x; return *y+1;}"
 assert 21 "{int x, *y=&x, **z=&y; **z=21; return x;}"
 assert 7 "{int; return 7;}"
+
+assert 3 "{return ret3();}"
+assert 75 "{int i; int ret=0; for (i=0; i<ret5(); i=i+1) ret = ret + ret3() * ret5(); return ret;}"
 
 echo OK

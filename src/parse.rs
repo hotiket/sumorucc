@@ -31,6 +31,8 @@ pub enum NodeKind<'token, 'vec> {
     Num(isize),
     // name, type, offset
     LVar(String, CType, usize),
+    // name
+    Call(String),
 }
 
 pub struct Node<'token, 'vec> {
@@ -468,7 +470,7 @@ fn unary<'token, 'vec>(
     }
 }
 
-// primary := "(" expr ")" | num | ident
+// primary := "(" expr ")" | num | ident ("(" ")")?
 fn primary<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
@@ -481,6 +483,14 @@ fn primary<'token, 'vec>(
         Node::new(token, NodeKind::Num(n))
     } else {
         let (token, name) = stream.expect_identifier();
-        Node::lvar(name, token, add_info)
+
+        if stream.consume("(").is_some() {
+            // 関数呼び出し
+            stream.expect(")");
+            Node::new(token, NodeKind::Call(name))
+        } else {
+            // 変数
+            Node::lvar(name, token, add_info)
+        }
     }
 }

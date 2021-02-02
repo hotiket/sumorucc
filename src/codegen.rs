@@ -1,33 +1,50 @@
+use std::fmt;
+
 use super::parse::{AdditionalInfo, Node, NodeKind};
 
 struct Context {
     label: usize,
+    stack: usize,
+}
+
+impl Context {
+    fn new() -> Self {
+        Self { label: 0, stack: 0 }
+    }
 }
 
 enum Register {
+    RAX,
     RDI,
     RBP,
 }
 
-fn push() {
-    println!("        push rax");
+impl fmt::Display for Register {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::RAX => write!(f, "rax"),
+            Self::RDI => write!(f, "rdi"),
+            Self::RBP => write!(f, "rbp"),
+        }
+    }
 }
 
-fn pop(reg: Register) {
-    let s = match reg {
-        Register::RDI => "rdi",
-        Register::RBP => "rbp",
-    };
+fn push(reg: Register, ctx: &mut Context) {
+    ctx.stack += 1;
+    println!("        push {}", reg);
+}
 
-    println!("        pop {}", s);
+fn pop(reg: Register, ctx: &mut Context) {
+    ctx.stack -= 1;
+    println!("        pop {}", reg);
 }
 
 // 左辺の結果をraxに、右辺の結果をrdiにセットする
 fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
     gen(rhs, ctx);
-    push();
+    push(Register::RAX, ctx);
     gen(lhs, ctx);
-    pop(Register::RDI);
+    pop(Register::RDI, ctx);
 }
 
 // 変数のアドレスをraxにmovする
@@ -96,13 +113,13 @@ fn gen(node: &Node, ctx: &mut Context) {
         }
         NodeKind::Return(child) => {
             gen(child, ctx);
-            epilogue();
+            println!("        jmp .Lreturn");
         }
         NodeKind::Assign(lhs, rhs) => {
             gen(rhs, ctx);
-            push();
+            push(Register::RAX, ctx);
             gen_lval(lhs, ctx);
-            pop(Register::RDI);
+            pop(Register::RDI, ctx);
             println!("        mov [rax], rdi");
             println!("        mov rax, rdi");
         }
@@ -161,18 +178,43 @@ fn gen(node: &Node, ctx: &mut Context) {
             gen_lval(node, ctx);
             println!("        mov rax, [rax]");
         }
+        NodeKind::Call(name) => {
+            // x86-64では関数を呼び出す時はRSPが16の倍数でなければならない。
+            // 関数呼び出しの際は呼び出し元アドレスがスタックに積まれるため
+            // プッシュした回数が偶数ならば、RSPを調整する必要がある。
+            let needs_align_rsp = ctx.stack % 2 == 0;
+
+            if needs_align_rsp {
+                println!("        sub rsp, 8");
+            }
+
+            // RAXには利用するSSEレジスタの数を入れる
+            // 浮動小数点型はサポートしないので0
+            println!("        mov rax, 0");
+
+            println!("        call {}", name);
+
+            if needs_align_rsp {
+                println!("        add rsp, 8");
+            }
+        }
     }
 }
 
-fn prologue(stack_size: usize) {
-    println!("        push rbp");
+fn prologue(mut stack_size: usize, ctx: &mut Context) {
+    // 関数を呼ぶ時のRSPのアライメントをしやすくするために
+    // スタックサイズを16の倍数にする。
+    stack_size = (stack_size + 16 - 1) / 16 * 16;
+
+    push(Register::RBP, ctx);
     println!("        mov rbp, rsp");
     println!("        sub rsp, {}", stack_size);
 }
 
-fn epilogue() {
+fn epilogue(ctx: &mut Context) {
+    println!(".Lreturn:");
     println!("        mov rsp, rbp");
-    pop(Register::RBP);
+    pop(Register::RBP, ctx);
     println!("        ret");
 }
 
@@ -197,10 +239,11 @@ pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
         0
     };
 
-    prologue(stack_size);
+    let mut ctx = Context::new();
 
-    let mut ctx = Context { label: 0 };
+    prologue(stack_size, &mut ctx);
+
     gen(&nodes[0], &mut ctx);
 
-    epilogue();
+    epilogue(&mut ctx);
 }

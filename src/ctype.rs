@@ -69,6 +69,7 @@ impl CType {
             },
             NodeKind::Num(..) => Ok(Self::Int),
             NodeKind::LVar(_, ctype, _) => Ok(ctype.clone()),
+            NodeKind::Call(..) => Ok(Self::Int),
         }
     }
 
