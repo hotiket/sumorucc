@@ -31,8 +31,8 @@ pub enum NodeKind<'token, 'vec> {
     Num(isize),
     // name, type, offset
     LVar(String, CType, usize),
-    // name
-    Call(String),
+    // name, args
+    Call(String, Vec<Node<'token, 'vec>>),
 }
 
 pub struct Node<'token, 'vec> {
@@ -470,7 +470,7 @@ fn unary<'token, 'vec>(
     }
 }
 
-// primary := "(" expr ")" | num | ident ("(" ")")?
+// primary := "(" expr ")" | num | ident call-args?
 fn primary<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
@@ -484,13 +484,43 @@ fn primary<'token, 'vec>(
     } else {
         let (token, name) = stream.expect_identifier();
 
-        if stream.consume("(").is_some() {
+        if let Some(args) = call_args(stream, add_info) {
             // 関数呼び出し
-            stream.expect(")");
-            Node::new(token, NodeKind::Call(name))
+            if args.len() > 6 {
+                error_tok!(token, "引数が6つを超える関数呼び出しはサポートしていません");
+            }
+            Node::new(token, NodeKind::Call(name, args))
         } else {
             // 変数
             Node::lvar(name, token, add_info)
         }
+    }
+}
+
+// call-args := "(" (expr ("," expr)*)? ")"
+fn call_args<'token, 'vec>(
+    stream: &mut TokenStream<'token, 'vec>,
+    add_info: &mut AdditionalInfo,
+) -> Option<Vec<Node<'token, 'vec>>> {
+    if stream.consume("(").is_some() {
+        let mut args = Vec::new();
+
+        if stream.consume(")").is_some() {
+            return Some(args);
+        }
+
+        loop {
+            let arg = expr(stream, add_info);
+            args.push(arg);
+            if stream.consume(",").is_none() {
+                break;
+            }
+        }
+
+        stream.expect(")");
+
+        Some(args)
+    } else {
+        None
     }
 }

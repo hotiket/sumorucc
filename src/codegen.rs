@@ -13,10 +13,16 @@ impl Context {
     }
 }
 
+#[derive(Clone, Copy)]
 enum Register {
     RAX,
     RDI,
     RBP,
+    RSI,
+    RDX,
+    RCX,
+    R8,
+    R9,
 }
 
 impl fmt::Display for Register {
@@ -25,6 +31,11 @@ impl fmt::Display for Register {
             Self::RAX => write!(f, "rax"),
             Self::RDI => write!(f, "rdi"),
             Self::RBP => write!(f, "rbp"),
+            Self::RSI => write!(f, "rsi"),
+            Self::RDX => write!(f, "rdx"),
+            Self::RCX => write!(f, "rcx"),
+            Self::R8 => write!(f, "r8"),
+            Self::R9 => write!(f, "r9"),
         }
     }
 }
@@ -178,7 +189,29 @@ fn gen(node: &Node, ctx: &mut Context) {
             gen_lval(node, ctx);
             println!("        mov rax, [rax]");
         }
-        NodeKind::Call(name) => {
+        NodeKind::Call(name, args) => {
+            // 関数呼び出しの際に引数をセットするレジスタ
+            // RDIから順に第1引数, 第2引数, ..., 第6引数と並んでいる
+            let arg_reg = vec![
+                Register::RDI,
+                Register::RSI,
+                Register::RDX,
+                Register::RCX,
+                Register::R8,
+                Register::R9,
+            ];
+
+            // 関数呼び出しの引数をスタックに積む
+            for arg in args {
+                gen(arg, ctx);
+                push(Register::RAX, ctx);
+            }
+
+            // x86-64の呼び出し規約に従いレジスタに引数をセットする
+            for reg in arg_reg.iter().take(args.len()).rev() {
+                pop(*reg, ctx);
+            }
+
             // x86-64では関数を呼び出す時はRSPが16の倍数でなければならない。
             // 関数呼び出しの際は呼び出し元アドレスがスタックに積まれるため
             // プッシュした回数が偶数ならば、RSPを調整する必要がある。

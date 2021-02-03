@@ -5,6 +5,9 @@ TEST_FN_FILE="tmp_fn.o"
 cat <<EOF | cc -xc -c -o "$TEST_FN_FILE" -
 int ret3(){return 3;}
 int ret5(){return 5;}
+int power(int x){return x*x;}
+int modulo(int x, int n){return x%n;}
+int add6_weight(int x1, int x2, int x3, int x4, int x5, int x6){return x1*1+x2*2+x3*3+x4*4+x5*5+x6*6;}
 EOF
 
 assert() {
@@ -111,5 +114,8 @@ assert 7 "{int; return 7;}"
 
 assert 3 "{return ret3();}"
 assert 75 "{int i; int ret=0; for (i=0; i<ret5(); i=i+1) ret = ret + ret3() * ret5(); return ret;}"
+assert 49 "{return power(modulo(27-10, 5*5-5*3));}"
+assert 91 "{return add6_weight(2-1, 3-1, 4-1, 5-1, 6-1, 7-1);}"
+assert 102 "{return add6_weight(5, 1, 3, 8, 6, 4);}"
 
 echo OK
