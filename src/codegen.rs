@@ -42,12 +42,12 @@ impl fmt::Display for Register {
 
 fn push(reg: Register, ctx: &mut Context) {
     ctx.stack += 1;
-    println!("        push {}", reg);
+    println!("        push %{}", reg);
 }
 
 fn pop(reg: Register, ctx: &mut Context) {
     ctx.stack -= 1;
-    println!("        pop {}", reg);
+    println!("        pop %{}", reg);
 }
 
 // 左辺の結果をraxに、右辺の結果をrdiにセットする
@@ -62,8 +62,8 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
 fn gen_lval(node: &Node, ctx: &mut Context) {
     match &node.kind {
         NodeKind::LVar(_, _, offset) => {
-            println!("        mov rax, rbp");
-            println!("        sub rax, {}", offset);
+            println!("        mov %rbp, %rax");
+            println!("        sub ${}, %rax", offset);
         }
         NodeKind::Deref(operand) => {
             gen(operand, ctx);
@@ -87,7 +87,7 @@ fn gen(node: &Node, ctx: &mut Context) {
 
             gen(cond_node, ctx);
             // 0が偽、0以外は真なので0と比較する
-            println!("        cmp rax, 0");
+            println!("        cmp $0, %rax");
 
             // 0だったら偽としてelse節にジャンプする
             println!("        je .Lelse{}", label);
@@ -112,7 +112,7 @@ fn gen(node: &Node, ctx: &mut Context) {
 
             gen(cond_node, ctx);
             // 0が偽、0以外は真なので0と比較する
-            println!("        cmp rax, 0");
+            println!("        cmp $0, %rax");
             println!("        je .Lend{}", label);
 
             gen(body_node, ctx);
@@ -131,63 +131,63 @@ fn gen(node: &Node, ctx: &mut Context) {
             push(Register::RAX, ctx);
             gen_lval(lhs, ctx);
             pop(Register::RDI, ctx);
-            println!("        mov [rax], rdi");
-            println!("        mov rax, rdi");
+            println!("        mov %rdi, (%rax)");
+            println!("        mov %rdi, %rax");
         }
         NodeKind::Eq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        cmp rax, rdi");
-            println!("        sete al");
-            println!("        movzb rax, al");
+            println!("        cmp %rdi, %rax");
+            println!("        sete %al");
+            println!("        movzb %al, %rax");
         }
         NodeKind::Neq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        cmp rax, rdi");
-            println!("        setne al");
-            println!("        movzb rax, al");
+            println!("        cmp %rdi, %rax");
+            println!("        setne %al");
+            println!("        movzb %al, %rax");
         }
         NodeKind::LT(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        cmp rax, rdi");
-            println!("        setl al");
-            println!("        movzb rax, al");
+            println!("        cmp %rdi, %rax");
+            println!("        setl %al");
+            println!("        movzb %al, %rax");
         }
         NodeKind::LTE(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        cmp rax, rdi");
-            println!("        setle al");
-            println!("        movzb rax, al");
+            println!("        cmp %rdi, %rax");
+            println!("        setle %al");
+            println!("        movzb %al, %rax");
         }
         NodeKind::Add(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        add rax, rdi");
+            println!("        add %rdi, %rax");
         }
         NodeKind::Sub(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        sub rax, rdi");
+            println!("        sub %rdi, %rax");
         }
         NodeKind::Mul(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
-            println!("        imul rax, rdi");
+            println!("        imul %rdi, %rax");
         }
         NodeKind::Div(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
             println!("        cqo");
-            println!("        idiv rdi");
+            println!("        idiv %rdi");
         }
         NodeKind::Addr(operand) => {
             gen_lval(operand, ctx);
         }
         NodeKind::Deref(_) => {
             gen_lval(node, ctx);
-            println!("        mov rax, [rax]");
+            println!("        mov (%rax), %rax");
         }
         NodeKind::Num(n) => {
-            println!("        mov rax, {}", n);
+            println!("        mov ${}, %rax", n);
         }
         NodeKind::LVar(..) => {
             gen_lval(node, ctx);
-            println!("        mov rax, [rax]");
+            println!("        mov (%rax), %rax");
         }
         NodeKind::Call(name, args) => {
             // 関数呼び出しの際に引数をセットするレジスタ
@@ -218,17 +218,17 @@ fn gen(node: &Node, ctx: &mut Context) {
             let needs_align_rsp = ctx.stack % 2 == 0;
 
             if needs_align_rsp {
-                println!("        sub rsp, 8");
+                println!("        sub $8, %rsp");
             }
 
             // RAXには利用するSSEレジスタの数を入れる
             // 浮動小数点型はサポートしないので0
-            println!("        mov rax, 0");
+            println!("        mov $0, %rax");
 
             println!("        call {}", name);
 
             if needs_align_rsp {
-                println!("        add rsp, 8");
+                println!("        add $8, %rsp");
             }
         }
     }
@@ -240,13 +240,13 @@ fn prologue(mut stack_size: usize, ctx: &mut Context) {
     stack_size = (stack_size + 16 - 1) / 16 * 16;
 
     push(Register::RBP, ctx);
-    println!("        mov rbp, rsp");
-    println!("        sub rsp, {}", stack_size);
+    println!("        mov %rsp, %rbp");
+    println!("        sub ${}, %rsp", stack_size);
 }
 
 fn epilogue(ctx: &mut Context) {
     println!(".Lreturn:");
-    println!("        mov rsp, rbp");
+    println!("        mov %rbp, %rsp");
     pop(Register::RBP, ctx);
     println!("        ret");
 }
@@ -260,7 +260,6 @@ pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
     }
 
     // アセンブリの前半部分を出力
-    println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
 
