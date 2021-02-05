@@ -30,6 +30,17 @@ enum Register {
     R9,
 }
 
+// 関数呼び出しの際に引数をセットするレジスタ
+// RDIから順に第1引数, 第2引数, ..., 第6引数と並んでいる
+static ARG_REG: [Register; 6] = [
+    Register::RDI,
+    Register::RSI,
+    Register::RDX,
+    Register::RCX,
+    Register::R8,
+    Register::R9,
+];
+
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -198,17 +209,6 @@ fn gen(node: &Node, ctx: &mut Context) {
             println!("        mov (%rax), %rax");
         }
         NodeKind::Call(name, args) => {
-            // 関数呼び出しの際に引数をセットするレジスタ
-            // RDIから順に第1引数, 第2引数, ..., 第6引数と並んでいる
-            let arg_reg = vec![
-                Register::RDI,
-                Register::RSI,
-                Register::RDX,
-                Register::RCX,
-                Register::R8,
-                Register::R9,
-            ];
-
             // 関数呼び出しの引数をスタックに積む
             for arg in args {
                 gen(arg, ctx);
@@ -216,7 +216,7 @@ fn gen(node: &Node, ctx: &mut Context) {
             }
 
             // x86-64の呼び出し規約に従いレジスタに引数をセットする
-            for reg in arg_reg.iter().take(args.len()).rev() {
+            for reg in ARG_REG.iter().take(args.len()).rev() {
                 pop(*reg, ctx);
             }
 
@@ -242,7 +242,7 @@ fn gen(node: &Node, ctx: &mut Context) {
     }
 }
 
-fn prologue(name: &str, mut stack_size: usize, ctx: &mut Context) {
+fn prologue(name: &str, mut stack_size: usize, args: &[usize], ctx: &mut Context) {
     ctx.fname = name.to_string();
     println!("{}:", name);
 
@@ -253,6 +253,14 @@ fn prologue(name: &str, mut stack_size: usize, ctx: &mut Context) {
     push(Register::RBP, ctx);
     println!("        mov %rsp, %rbp");
     println!("        sub ${}, %rsp", stack_size);
+
+    // x86-64の呼び出し規約に従い引数をレジスタから
+    // スタック上のローカル変数にセットする。
+    for (offset, reg) in args.iter().zip(ARG_REG.iter()) {
+        println!("        mov %rbp, %rax");
+        println!("        sub ${}, %rax", offset);
+        println!("        mov %{}, (%rax)", reg);
+    }
 }
 
 fn epilogue(ctx: &mut Context) {
@@ -268,7 +276,7 @@ pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
     let mut ctx = Context::new();
 
     for node in nodes {
-        if let NodeKind::Defun(name, body) = &node.kind {
+        if let NodeKind::Defun(name, args, body) = &node.kind {
             // ローカル変数はRBPからのオフセット順に並んでいるので
             // 最後の要素のオフセットがスタックサイズとなる
             let stack_size = if let Some(lvar) = add_info
@@ -281,7 +289,7 @@ pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
             } else {
                 0
             };
-            prologue(name, stack_size, &mut ctx);
+            prologue(name, stack_size, args, &mut ctx);
 
             gen(body, &mut ctx);
 

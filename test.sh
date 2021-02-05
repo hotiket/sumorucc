@@ -120,5 +120,8 @@ assert 102 "int main(){return add6_weight(5, 1, 3, 8, 6, 4);}"
 
 assert 7 "int f(){if (1) {return 7;} else {return 5;}} int main(){if (0) {return 3;} else {return f();}}"
 assert 11 "int f(){int x=13; if (1) {return x-2;} else {return x+4;}} int main(){int x=f(); if (0) {return f();} else {return x;}}"
+assert 100 "int f(int x){return x;} int main(){return f(100);}"
+assert 120 "int factorial(int x){if (x==1) return 1; return x*factorial(x-1);} int main(){return factorial(5);}"
+assert 10 "int sub(int x, int y){return x-y;} int main(){int x=sub(2, 5); int y=sub(8, 1); return sub(y, x);}"
 
 echo OK

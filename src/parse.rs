@@ -2,8 +2,8 @@ use super::ctype::CType;
 use super::tokenize::{Token, TokenStream};
 
 pub enum NodeKind<'token, 'vec> {
-    // name, body
-    Defun(String, Box<Node<'token, 'vec>>),
+    // name, args(offset), body
+    Defun(String, Vec<usize>, Box<Node<'token, 'vec>>),
     Block(Vec<Node<'token, 'vec>>),
     Return(Box<Node<'token, 'vec>>),
     // cond, then, else
@@ -190,23 +190,63 @@ fn program<'token, 'vec>(
     nodes
 }
 
-// function_definition := "int" ident "(" ")" "{" compound_stmt
+// function_definition := "int" function_declarator "{" compound_stmt
 fn function_definition<'token, 'vec>(
     stream: &mut TokenStream<'token, 'vec>,
     add_info: &mut AdditionalInfo,
 ) -> Node<'token, 'vec> {
     stream.expect_keyword("int");
 
-    let (token, name) = stream.expect_identifier();
-    add_info.add_fn(&name, token);
+    let (token, name, args) = function_declarator(stream, add_info);
 
-    stream.expect("(");
-    stream.expect(")");
+    if args.len() > 6 {
+        error_tok!(token, "引数が6つを超える関数定義はサポートしていません");
+    }
 
     stream.expect("{");
     let body = Box::new(compound_stmt(stream, add_info));
 
-    Node::new(token, NodeKind::Defun(name, body))
+    Node::new(token, NodeKind::Defun(name, args, body))
+}
+
+// function_declarator := ident "(" ("int" ident ("," "int" ident)*)? ")"
+fn function_declarator<'token, 'vec>(
+    stream: &mut TokenStream<'token, 'vec>,
+    add_info: &mut AdditionalInfo,
+) -> (&'vec Token<'token>, String, Vec<usize>) {
+    let (func_token, func_name) = stream.expect_identifier();
+    add_info.add_fn(&func_name, func_token);
+
+    stream.expect("(");
+
+    let mut args = Vec::new();
+
+    if stream.consume(")").is_some() {
+        return (func_token, func_name, args);
+    }
+
+    loop {
+        stream.expect_keyword("int");
+        let ctype = CType::Int;
+
+        let (arg_token, arg_name) = stream.expect_identifier();
+
+        add_info
+            .current_fn_mut()
+            .unwrap()
+            .add_lvar(&arg_name, ctype, arg_token);
+
+        let lvar = add_info.current_fn().unwrap().find_lvar(&arg_name).unwrap();
+        args.push(lvar.offset);
+
+        if stream.consume(",").is_none() {
+            break;
+        }
+    }
+
+    stream.expect(")");
+
+    (func_token, func_name, args)
 }
 
 // stmt := "return" expr ";"
