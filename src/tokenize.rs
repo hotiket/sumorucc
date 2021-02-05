@@ -158,6 +158,18 @@ impl<'token, 'vec> TokenStream<'token, 'vec> {
         token_ident.unwrap()
     }
 
+    // 次のトークンが期待しているキーワードの場合、そのトークンを返し
+    // トークンを1つ読み進める。それ以外の場合にはエラーを報告する。
+    pub fn expect_keyword(&mut self, keyword: &str) -> &'vec Token<'token> {
+        let token = self.consume_keyword(keyword);
+
+        if token.is_none() {
+            error_at!(self.get_src(), self.pos(), "{}ではありません", keyword);
+        }
+
+        token.unwrap()
+    }
+
     pub fn at_eof(&self) -> bool {
         matches!(
             self.peek(),

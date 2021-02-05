@@ -3,13 +3,18 @@ use std::fmt;
 use super::parse::{AdditionalInfo, Node, NodeKind};
 
 struct Context {
+    fname: String,
     label: usize,
     stack: usize,
 }
 
 impl Context {
     fn new() -> Self {
-        Self { label: 0, stack: 0 }
+        Self {
+            fname: String::new(),
+            label: 0,
+            stack: 0,
+        }
     }
 }
 
@@ -76,6 +81,9 @@ fn gen_lval(node: &Node, ctx: &mut Context) {
 
 fn gen(node: &Node, ctx: &mut Context) {
     match &node.kind {
+        NodeKind::Defun(..) => {
+            error_tok!(node.token, "関数内で関数定義はできません");
+        }
         NodeKind::Block(nodes) => {
             for node in nodes {
                 gen(node, ctx);
@@ -124,7 +132,7 @@ fn gen(node: &Node, ctx: &mut Context) {
         }
         NodeKind::Return(child) => {
             gen(child, ctx);
-            println!("        jmp .Lreturn");
+            println!("        jmp .L{}__return", &ctx.fname);
         }
         NodeKind::Assign(lhs, rhs) => {
             gen(rhs, ctx);
@@ -234,7 +242,10 @@ fn gen(node: &Node, ctx: &mut Context) {
     }
 }
 
-fn prologue(mut stack_size: usize, ctx: &mut Context) {
+fn prologue(name: &str, mut stack_size: usize, ctx: &mut Context) {
+    ctx.fname = name.to_string();
+    println!("{}:", name);
+
     // 関数を呼ぶ時のRSPのアライメントをしやすくするために
     // スタックサイズを16の倍数にする。
     stack_size = (stack_size + 16 - 1) / 16 * 16;
@@ -245,37 +256,38 @@ fn prologue(mut stack_size: usize, ctx: &mut Context) {
 }
 
 fn epilogue(ctx: &mut Context) {
-    println!(".Lreturn:");
+    println!(".L{}__return:", &ctx.fname);
     println!("        mov %rbp, %rsp");
     pop(Register::RBP, ctx);
     println!("        ret");
 }
 
 pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
-    if nodes.is_empty()
-        || nodes.len() > 1
-        || !matches!(nodes[0], Node{kind: NodeKind::Block(_), ..})
-    {
-        error!("プログラムはブロックで囲まれている必要があります");
-    }
-
-    // アセンブリの前半部分を出力
     println!(".global main");
-    println!("main:");
-
-    // ローカル変数はRBPからのオフセット順に並んでいるので
-    // 最後の要素のオフセットがスタックサイズとなる
-    let stack_size = if let Some(lvar) = add_info.lvars.last() {
-        lvar.offset
-    } else {
-        0
-    };
 
     let mut ctx = Context::new();
 
-    prologue(stack_size, &mut ctx);
+    for node in nodes {
+        if let NodeKind::Defun(name, body) = &node.kind {
+            // ローカル変数はRBPからのオフセット順に並んでいるので
+            // 最後の要素のオフセットがスタックサイズとなる
+            let stack_size = if let Some(lvar) = add_info
+                .find_fn(name)
+                .expect("関数情報が見つかりません")
+                .lvars
+                .last()
+            {
+                lvar.offset
+            } else {
+                0
+            };
+            prologue(name, stack_size, &mut ctx);
 
-    gen(&nodes[0], &mut ctx);
+            gen(body, &mut ctx);
 
-    epilogue(&mut ctx);
+            epilogue(&mut ctx);
+        } else {
+            error_tok!(node.token, "トップレベルでは関数定義のみできます");
+        }
+    }
 }

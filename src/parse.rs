@@ -2,6 +2,8 @@ use super::ctype::CType;
 use super::tokenize::{Token, TokenStream};
 
 pub enum NodeKind<'token, 'vec> {
+    // name, body
+    Defun(String, Box<Node<'token, 'vec>>),
     Block(Vec<Node<'token, 'vec>>),
     Return(Box<Node<'token, 'vec>>),
     // cond, then, else
@@ -60,7 +62,10 @@ impl<'token, 'vec> Node<'token, 'vec> {
 
     pub fn lvar(name: String, token: &'vec Token<'token>, add_info: &AdditionalInfo) -> Self {
         // ローカル変数のスタックのオフセットを取得
-        let lvar = add_info.find_lvar(&name);
+        let lvar = add_info
+            .current_fn()
+            .expect("関数定義外でのローカル変数参照です")
+            .find_lvar(&name);
         if lvar.is_none() {
             error_tok!(token, "宣言されていません");
         }
@@ -80,17 +85,21 @@ pub struct LVar {
     pub ctype: CType,
 }
 
-pub struct AdditionalInfo {
+pub struct Function {
+    pub name: String,
     pub lvars: Vec<LVar>,
 }
 
-impl AdditionalInfo {
-    pub fn new() -> Self {
-        Self { lvars: Vec::new() }
+impl Function {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            lvars: Vec::new(),
+        }
     }
 
     pub fn add_lvar(&mut self, name: &str, ctype: CType, token: &Token) {
-        // ローカル変数がすでに宣言されているかチェック
+        // 同名のローカル変数がすでに宣言されているかチェック
         let lvar = self.find_lvar(name);
         if lvar.is_some() {
             error_tok!(token, "すでに宣言されています");
@@ -119,6 +128,40 @@ impl AdditionalInfo {
     }
 }
 
+pub struct AdditionalInfo {
+    functions: Vec<Function>,
+}
+
+impl AdditionalInfo {
+    pub fn new() -> Self {
+        Self {
+            functions: Vec::new(),
+        }
+    }
+
+    pub fn add_fn(&mut self, name: &str, token: &Token) {
+        // 同名の関数がすでに宣言されているかチェック
+        let lvar = self.find_fn(name);
+        if lvar.is_some() {
+            error_tok!(token, "すでに宣言されています");
+        }
+
+        self.functions.push(Function::new(name));
+    }
+
+    pub fn find_fn(&self, name: &str) -> Option<&Function> {
+        self.functions.iter().find(|function| function.name == name)
+    }
+
+    pub fn current_fn(&self) -> Option<&Function> {
+        self.functions.last()
+    }
+
+    pub fn current_fn_mut(&mut self) -> Option<&mut Function> {
+        self.functions.last_mut()
+    }
+}
+
 pub fn parse<'token, 'vec>(
     token: &'vec [Token<'token>],
 ) -> (Vec<Node<'token, 'vec>>, AdditionalInfo) {
@@ -141,10 +184,29 @@ fn program<'token, 'vec>(
     let mut nodes = Vec::new();
 
     while !stream.at_eof() {
-        nodes.push(stmt(stream, add_info));
+        nodes.push(function_definition(stream, add_info));
     }
 
     nodes
+}
+
+// function_definition := "int" ident "(" ")" "{" compound_stmt
+fn function_definition<'token, 'vec>(
+    stream: &mut TokenStream<'token, 'vec>,
+    add_info: &mut AdditionalInfo,
+) -> Node<'token, 'vec> {
+    stream.expect_keyword("int");
+
+    let (token, name) = stream.expect_identifier();
+    add_info.add_fn(&name, token);
+
+    stream.expect("(");
+    stream.expect(")");
+
+    stream.expect("{");
+    let body = Box::new(compound_stmt(stream, add_info));
+
+    Node::new(token, NodeKind::Defun(name, body))
 }
 
 // stmt := "return" expr ";"
@@ -308,7 +370,10 @@ fn declarator<'token, 'vec>(
     }
 
     let (token, name) = stream.expect_identifier();
-    add_info.add_lvar(&name, ctype, token);
+    add_info
+        .current_fn_mut()
+        .expect("関数定義外での宣言です")
+        .add_lvar(&name, ctype, token);
     (name, token)
 }
 

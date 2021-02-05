@@ -27,9 +27,11 @@ impl CType {
         let invalid_operand = "無効なオペランドです".to_string();
 
         match kind {
-            NodeKind::Block(..) | NodeKind::Return(..) | NodeKind::If(..) | NodeKind::For(..) => {
-                Ok(Self::Statement)
-            }
+            NodeKind::Defun(..)
+            | NodeKind::Block(..)
+            | NodeKind::Return(..)
+            | NodeKind::If(..)
+            | NodeKind::For(..) => Ok(Self::Statement),
             NodeKind::Assign(lhs, rhs) => {
                 if lhs.ctype == rhs.ctype {
                     Ok(lhs.ctype.clone())
