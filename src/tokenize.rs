@@ -1,6 +1,8 @@
-pub struct TokenCommon<'src> {
-    pub token_str: &'src str,
-    pub src: &'src str,
+use std::rc::Rc;
+
+pub struct TokenCommon {
+    pub token_str: String,
+    pub src: Rc<str>,
     // ソースにおけるトークンの
     // コードポイント単位での開始位置
     pub pos: usize,
@@ -19,124 +21,108 @@ enum TokenKind {
     EOF,
 }
 
-pub struct Token<'src> {
-    pub common: TokenCommon<'src>,
+pub struct Token {
+    pub common: TokenCommon,
     kind: TokenKind,
 }
 
-pub struct TokenStream<'token, 'vec> {
-    token: &'vec [Token<'token>],
+pub struct TokenStream<'vec> {
+    token: &'vec [Rc<Token>],
     current: usize,
 }
 
-impl<'token, 'vec> TokenStream<'token, 'vec> {
-    pub fn new(token: &'vec [Token<'token>]) -> Self {
+impl<'vec> TokenStream<'vec> {
+    pub fn new(token: &'vec [Rc<Token>]) -> Self {
         Self { token, current: 0 }
     }
 
-    fn get_src(&self) -> &'token str {
+    fn get_src(&self) -> Rc<str> {
         // 終端にEOFがあるので0要素目は必ず存在する
-        self.token.get(0).unwrap().common.src
+        Rc::clone(&self.token.get(0).unwrap().common.src)
     }
 
-    fn peek(&self) -> Option<&'vec Token<'token>> {
+    fn peek(&self) -> Option<Rc<Token>> {
         if self.current >= self.token.len() {
             None
         } else {
-            Some(&self.token[self.current])
+            Some(Rc::clone(&self.token[self.current]))
         }
     }
 
-    fn next(&mut self) -> Option<&'vec Token<'token>> {
+    fn next(&mut self) -> Option<Rc<Token>> {
         if self.current >= self.token.len() {
             None
         } else {
             self.current += 1;
-            Some(&self.token[self.current - 1])
+            Some(Rc::clone(&self.token[self.current - 1]))
         }
     }
 
     pub fn pos(&self) -> usize {
-        match self.peek() {
-            Some(Token {
-                common:
-                    TokenCommon {
-                        token_str: _,
-                        src: _,
-                        pos,
-                    },
-                ..
-            }) => *pos,
-            _ => self.get_src().len(),
+        if let Some(token) = self.peek() {
+            token.common.pos
+        } else {
+            self.get_src().chars().count()
         }
     }
 
-    pub fn current(&self) -> Option<&'vec Token<'token>> {
-        self.token.get(self.current)
+    pub fn current(&self) -> Option<Rc<Token>> {
+        self.token.get(self.current).map(|token| Rc::clone(token))
     }
 
     // 次のトークンが期待している記号のときには、
     // そのトークンをSomeで包んで返し、トークンを1つ読み進める。
     // それ以外の場合にはNoneを返す。
-    pub fn consume(self: &mut TokenStream<'token, 'vec>, op: &str) -> Option<&'vec Token<'token>> {
-        if let Some(Token {
-            common,
-            kind: TokenKind::RESERVED,
-        }) = self.peek()
-        {
-            if common.token_str == op {
-                return self.next();
-            }
+    pub fn consume(&mut self, op: &str) -> Option<Rc<Token>> {
+        match self.peek().as_deref() {
+            Some(Token {
+                common,
+                kind: TokenKind::RESERVED,
+            }) if common.token_str == op => self.next(),
+            _ => None,
         }
-        None
     }
 
     // 次のトークンが数値の場合、そのトークンと数値をSomeで包んで返し
     // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
-    pub fn consume_number(&mut self) -> Option<(&'vec Token<'token>, isize)> {
-        if let Some(&Token {
-            common: _,
-            kind: TokenKind::NUM(n),
-        }) = self.peek()
-        {
-            Some((self.next().unwrap(), n))
-        } else {
-            None
+    pub fn consume_number(&mut self) -> Option<(Rc<Token>, isize)> {
+        match self.peek().as_deref() {
+            Some(Token {
+                kind: TokenKind::NUM(n),
+                ..
+            }) => Some((self.next().unwrap(), *n)),
+            _ => None,
         }
     }
 
     // 次のトークンが識別子の場合、そのトークンと識別子をSomeで包んで返し
     // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
-    pub fn consume_identifier(&mut self) -> Option<(&'vec Token<'token>, String)> {
-        if let Some(Token {
-            common,
-            kind: TokenKind::IDENT,
-        }) = self.peek()
-        {
-            Some((self.next().unwrap(), common.token_str.to_string()))
-        } else {
-            None
+    pub fn consume_identifier(&mut self) -> Option<(Rc<Token>, String)> {
+        match self.peek().as_deref() {
+            Some(Token {
+                common,
+                kind: TokenKind::IDENT,
+            }) => Some((self.next().unwrap(), common.token_str.clone())),
+            _ => None,
         }
     }
 
     // 次のトークンが期待しているキーワードの場合、そのトークンを
     // Someで包んで返しトークンを1つ読み進める。それ以外の場合にはNoneを返す。
-    pub fn consume_keyword(&mut self, keyword: &str) -> Option<&'vec Token<'token>> {
-        if let Some(Token {
-            common,
-            kind: TokenKind::KEYWORD,
-        }) = self.peek()
-        {
-            if common.token_str == keyword {
-                return self.next();
-            }
+    pub fn consume_keyword(&mut self, keyword: &str) -> Option<Rc<Token>> {
+        match self.peek().as_deref() {
+            Some(Token {
+                common,
+                kind: TokenKind::KEYWORD,
+                ..
+            }) if common.token_str == keyword => self.next(),
+            _ => None,
         }
-        None
     }
 
     // 次のトークンが期待している記号のときには、そのトークンを返し
     // トークンを1つ読み進める。それ以外の場合にはエラーを報告する。
-    pub fn expect(&mut self, op: &str) -> &'vec Token<'token> {
+    pub fn expect(&mut self, op: &str) -> Rc<Token> {
         let token = self.consume(op);
 
         if token.is_none() {
@@ -148,7 +134,7 @@ impl<'token, 'vec> TokenStream<'token, 'vec> {
 
     // 次のトークンが識別子の場合、そのトークンを返し、トークンを
     // 1つ読み進める。それ以外の場合にはエラーを報告する。
-    pub fn expect_identifier(&mut self) -> (&'vec Token<'token>, String) {
+    pub fn expect_identifier(&mut self) -> (Rc<Token>, String) {
         let token_ident = self.consume_identifier();
 
         if token_ident.is_none() {
@@ -160,7 +146,7 @@ impl<'token, 'vec> TokenStream<'token, 'vec> {
 
     // 次のトークンが期待しているキーワードの場合、そのトークンを返し
     // トークンを1つ読み進める。それ以外の場合にはエラーを報告する。
-    pub fn expect_keyword(&mut self, keyword: &str) -> &'vec Token<'token> {
+    pub fn expect_keyword(&mut self, keyword: &str) -> Rc<Token> {
         let token = self.consume_keyword(keyword);
 
         if token.is_none() {
@@ -172,10 +158,10 @@ impl<'token, 'vec> TokenStream<'token, 'vec> {
 
     pub fn at_eof(&self) -> bool {
         matches!(
-            self.peek(),
+            self.peek().as_deref(),
             Some(Token {
-                common: _,
                 kind: TokenKind::EOF,
+                ..
             })
         )
     }
@@ -215,7 +201,7 @@ fn is_keyword(s: &str) -> bool {
     false
 }
 
-pub fn tokenize<'src>(src: &'src str) -> Vec<Token<'src>> {
+pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
     let mut token = Vec::new();
     let mut src_iter = src.char_indices().enumerate().peekable();
 
@@ -234,17 +220,17 @@ pub fn tokenize<'src>(src: &'src str) -> Vec<Token<'src>> {
                     }
                 }
 
-                let token_str = &src[byte_s..byte_e];
+                let token_str = src[byte_s..byte_e].to_string();
                 let n = token_str.parse::<isize>().unwrap();
 
-                token.push(Token {
+                token.push(Rc::new(Token {
                     common: TokenCommon {
                         token_str,
-                        src,
+                        src: Rc::clone(&src),
                         pos,
                     },
                     kind: TokenKind::NUM(n),
-                });
+                }));
             }
 
             // "+", "*", ";"といった記号
@@ -259,16 +245,16 @@ pub fn tokenize<'src>(src: &'src str) -> Vec<Token<'src>> {
                     }
                 }
 
-                let token_str = &src[byte_s..byte_e];
+                let token_str = src[byte_s..byte_e].to_string();
 
-                token.push(Token {
+                token.push(Rc::new(Token {
                     common: TokenCommon {
                         token_str,
-                        src,
+                        src: Rc::clone(&src),
                         pos,
                     },
                     kind: TokenKind::RESERVED,
-                });
+                }));
             }
 
             // 識別子とキーワード
@@ -282,7 +268,7 @@ pub fn tokenize<'src>(src: &'src str) -> Vec<Token<'src>> {
                     }
                 }
 
-                let token_str = &src[byte_s..byte_e];
+                let token_str = src[byte_s..byte_e].to_string();
 
                 let kind = if is_keyword(&token_str) {
                     TokenKind::KEYWORD
@@ -291,11 +277,11 @@ pub fn tokenize<'src>(src: &'src str) -> Vec<Token<'src>> {
                 };
                 let common = TokenCommon {
                     token_str,
-                    src,
+                    src: Rc::clone(&src),
                     pos,
                 };
 
-                token.push(Token { common, kind });
+                token.push(Rc::new(Token { common, kind }));
             }
 
             // 空白文字をスキップ
@@ -307,14 +293,14 @@ pub fn tokenize<'src>(src: &'src str) -> Vec<Token<'src>> {
         }
     }
 
-    token.push(Token {
+    token.push(Rc::new(Token {
         common: TokenCommon {
-            token_str: "",
-            src,
-            pos: src.len(),
+            token_str: String::new(),
+            src: Rc::clone(&src),
+            pos: src.chars().count(),
         },
         kind: TokenKind::EOF,
-    });
+    }));
 
     token
 }

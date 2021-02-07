@@ -1,4 +1,5 @@
 use std::env;
+use std::rc::Rc;
 
 macro_rules! error {
     ($fmt:expr) => {
@@ -51,8 +52,10 @@ fn main() {
         error!("引数の個数が正しくありません");
     }
 
+    let src = Rc::from(args[1].clone());
+
     // トークナイズしてパースする
-    let token = tokenize(&args[1]);
+    let token = tokenize(src);
     let (node, add_info) = parse(&token);
 
     codegen(&node, &add_info);

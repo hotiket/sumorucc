@@ -1,5 +1,6 @@
 use std::fmt;
 use std::mem::{replace, swap};
+use std::rc::Rc;
 
 use super::parse::{Node, NodeKind};
 use super::tokenize::Token;
@@ -12,10 +13,7 @@ pub enum CType {
 }
 
 impl CType {
-    pub fn new<'token, 'vec>(
-        token: &'vec Token<'token>,
-        kind: &mut NodeKind<'token, 'vec>,
-    ) -> Result<Self, String> {
+    pub fn new(token: &Rc<Token>, kind: &mut NodeKind) -> Result<Self, String> {
         // ポインタ同士の減算の場合、減算結果をポインタが指す
         // 型のサイズで割り、要素数を返すようにkindを置き換える
         // 必要がある。matchの中だとkindが再借用となりコンパイル
@@ -76,10 +74,7 @@ impl CType {
     }
 
     // ポインタ同士の減算用の処理
-    fn new_ptr_sub<'token, 'vec>(
-        token: &'vec Token<'token>,
-        kind: &mut NodeKind<'token, 'vec>,
-    ) -> Option<Self> {
+    fn new_ptr_sub(token: &Rc<Token>, kind: &mut NodeKind) -> Option<Self> {
         // kindが同じ型のポインタ同士の減算かチェック
         let base_size = if let NodeKind::Sub(lhs, rhs) = kind {
             if let Self::Pointer(base) = &lhs.ctype {
@@ -115,32 +110,31 @@ impl CType {
 
     // ptr + nがptrのn番目の要素を指すようにnをsizeof(ptr)倍する
     fn index(node: &mut Node, size: usize) {
-        let dummy_node = Node::null_statement(node.token);
+        let dummy_node = Node::null_statement(Rc::clone(&node.token));
         let org_node = Box::new(replace(node, dummy_node));
 
-        let size_node = Box::new(Node::new(node.token, NodeKind::Num(size as isize)));
+        let size_node = Box::new(Node::new(
+            Rc::clone(&node.token),
+            NodeKind::Num(size as isize),
+        ));
 
-        let mut new_node = Node::new(node.token, NodeKind::Mul(org_node, size_node));
+        let mut new_node = Node::new(Rc::clone(&node.token), NodeKind::Mul(org_node, size_node));
         swap(node, &mut new_node);
     }
 
     // ptr2 - ptr1が要素数を返すように(ptr2 - ptr1) / sizeof(ptr1)にする
-    fn num_of_elements<'token, 'vec>(
-        token: &'vec Token<'token>,
-        kind: &mut NodeKind<'token, 'vec>,
-        size: usize,
-    ) {
+    fn num_of_elements(token: &Rc<Token>, kind: &mut NodeKind, size: usize) {
         let dummy_kind = NodeKind::Num(0);
         let org_kind = replace(kind, dummy_kind);
 
         let ctype = Self::Int;
         let org_node = Box::new(Node {
-            token,
+            token: Rc::clone(token),
             kind: org_kind,
             ctype,
         });
 
-        let size_node = Box::new(Node::new(token, NodeKind::Num(size as isize)));
+        let size_node = Box::new(Node::new(Rc::clone(token), NodeKind::Num(size as isize)));
 
         let mut new_kind = NodeKind::Div(org_node, size_node);
         swap(kind, &mut new_kind);

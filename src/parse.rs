@@ -1,51 +1,44 @@
+use std::rc::Rc;
+
 use super::ctype::CType;
 use super::tokenize::{Token, TokenStream};
 
-pub enum NodeKind<'token, 'vec> {
+pub enum NodeKind {
     // name, args(offset), body
-    Defun(String, Vec<usize>, Box<Node<'token, 'vec>>),
-    Block(Vec<Node<'token, 'vec>>),
-    Return(Box<Node<'token, 'vec>>),
+    Defun(String, Vec<usize>, Box<Node>),
+    Block(Vec<Node>),
+    Return(Box<Node>),
     // cond, then, else
-    If(
-        Box<Node<'token, 'vec>>,
-        Box<Node<'token, 'vec>>,
-        Box<Node<'token, 'vec>>,
-    ),
+    If(Box<Node>, Box<Node>, Box<Node>),
     // init, cond, update, body
-    For(
-        Box<Node<'token, 'vec>>,
-        Box<Node<'token, 'vec>>,
-        Box<Node<'token, 'vec>>,
-        Box<Node<'token, 'vec>>,
-    ),
-    Assign(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Eq(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Neq(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    LT(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    LTE(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Add(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Sub(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Mul(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Div(Box<Node<'token, 'vec>>, Box<Node<'token, 'vec>>),
-    Addr(Box<Node<'token, 'vec>>),
-    Deref(Box<Node<'token, 'vec>>),
+    For(Box<Node>, Box<Node>, Box<Node>, Box<Node>),
+    Assign(Box<Node>, Box<Node>),
+    Eq(Box<Node>, Box<Node>),
+    Neq(Box<Node>, Box<Node>),
+    LT(Box<Node>, Box<Node>),
+    LTE(Box<Node>, Box<Node>),
+    Add(Box<Node>, Box<Node>),
+    Sub(Box<Node>, Box<Node>),
+    Mul(Box<Node>, Box<Node>),
+    Div(Box<Node>, Box<Node>),
+    Addr(Box<Node>),
+    Deref(Box<Node>),
     Num(isize),
     // name, type, offset
     LVar(String, CType, usize),
     // name, args
-    Call(String, Vec<Node<'token, 'vec>>),
+    Call(String, Vec<Node>),
 }
 
-pub struct Node<'token, 'vec> {
-    pub token: &'vec Token<'token>,
-    pub kind: NodeKind<'token, 'vec>,
+pub struct Node {
+    pub token: Rc<Token>,
+    pub kind: NodeKind,
     pub ctype: CType,
 }
 
-impl<'token, 'vec> Node<'token, 'vec> {
-    pub fn new(token: &'vec Token<'token>, mut kind: NodeKind<'token, 'vec>) -> Self {
-        let ctype_ret = CType::new(token, &mut kind);
+impl Node {
+    pub fn new(token: Rc<Token>, mut kind: NodeKind) -> Self {
+        let ctype_ret = CType::new(&token, &mut kind);
 
         if let Err(reason) = ctype_ret {
             error_tok!(token, "{}", reason);
@@ -56,11 +49,11 @@ impl<'token, 'vec> Node<'token, 'vec> {
         Node { token, kind, ctype }
     }
 
-    pub fn null_statement(token: &'vec Token<'token>) -> Self {
+    pub fn null_statement(token: Rc<Token>) -> Self {
         Self::new(token, NodeKind::Block(Vec::new()))
     }
 
-    pub fn lvar(name: String, token: &'vec Token<'token>, add_info: &AdditionalInfo) -> Self {
+    pub fn lvar(name: String, token: Rc<Token>, add_info: &AdditionalInfo) -> Self {
         // ローカル変数のスタックのオフセットを取得
         let lvar = add_info
             .current_fn()
@@ -98,7 +91,7 @@ impl Function {
         }
     }
 
-    pub fn add_lvar(&mut self, name: &str, ctype: CType, token: &Token) {
+    pub fn add_lvar(&mut self, name: &str, ctype: CType, token: &Rc<Token>) {
         // 同名のローカル変数がすでに宣言されているかチェック
         let lvar = self.find_lvar(name);
         if lvar.is_some() {
@@ -139,7 +132,7 @@ impl AdditionalInfo {
         }
     }
 
-    pub fn add_fn(&mut self, name: &str, token: &Token) {
+    pub fn add_fn(&mut self, name: &str, token: &Rc<Token>) {
         // 同名の関数がすでに宣言されているかチェック
         let lvar = self.find_fn(name);
         if lvar.is_some() {
@@ -162,9 +155,7 @@ impl AdditionalInfo {
     }
 }
 
-pub fn parse<'token, 'vec>(
-    token: &'vec [Token<'token>],
-) -> (Vec<Node<'token, 'vec>>, AdditionalInfo) {
+pub fn parse(token: &[Rc<Token>]) -> (Vec<Node>, AdditionalInfo) {
     let mut stream = TokenStream::new(token);
     let mut add_info = AdditionalInfo::new();
     let nodes = program(&mut stream, &mut add_info);
@@ -177,10 +168,7 @@ pub fn parse<'token, 'vec>(
 }
 
 // program := stmt*
-fn program<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Vec<Node<'token, 'vec>> {
+fn program(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> {
     let mut nodes = Vec::new();
 
     while !stream.at_eof() {
@@ -191,10 +179,7 @@ fn program<'token, 'vec>(
 }
 
 // function_definition := "int" function_declarator "{" compound_stmt
-fn function_definition<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn function_definition(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     stream.expect_keyword("int");
 
     let (token, name, args) = function_declarator(stream, add_info);
@@ -210,12 +195,12 @@ fn function_definition<'token, 'vec>(
 }
 
 // function_declarator := ident "(" ("int" ident ("," "int" ident)*)? ")"
-fn function_declarator<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
+fn function_declarator(
+    stream: &mut TokenStream,
     add_info: &mut AdditionalInfo,
-) -> (&'vec Token<'token>, String, Vec<usize>) {
+) -> (Rc<Token>, String, Vec<usize>) {
     let (func_token, func_name) = stream.expect_identifier();
-    add_info.add_fn(&func_name, func_token);
+    add_info.add_fn(&func_name, &func_token);
 
     stream.expect("(");
 
@@ -234,7 +219,7 @@ fn function_declarator<'token, 'vec>(
         add_info
             .current_fn_mut()
             .unwrap()
-            .add_lvar(&arg_name, ctype, arg_token);
+            .add_lvar(&arg_name, ctype, &arg_token);
 
         let lvar = add_info.current_fn().unwrap().find_lvar(&arg_name).unwrap();
         args.push(lvar.offset);
@@ -255,10 +240,7 @@ fn function_declarator<'token, 'vec>(
 //       | "for" "(" expr_stmt expr? ";" expr? ")" stmt
 //       | "while" "(" expr ")" stmt
 //       | expr_stmt ";"
-fn stmt<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if let Some(token) = stream.consume_keyword("return") {
         let node = expr(stream, add_info);
         stream.expect(";");
@@ -276,7 +258,7 @@ fn stmt<'token, 'vec>(
             Box::new(stmt(stream, add_info))
         } else {
             // 紐付けるトークンがないのでif自体と紐付ける
-            Box::new(Node::null_statement(token))
+            Box::new(Node::null_statement(Rc::clone(&token)))
         };
 
         Node::new(token, NodeKind::If(cond_node, then_node, else_node))
@@ -310,8 +292,8 @@ fn stmt<'token, 'vec>(
         )
     } else if let Some(token) = stream.consume_keyword("while") {
         // 紐付けるトークンがないのでwhile自体と紐付ける
-        let init_node = Box::new(Node::null_statement(token));
-        let update_node = Box::new(Node::null_statement(token));
+        let init_node = Box::new(Node::null_statement(Rc::clone(&token)));
+        let update_node = Box::new(Node::null_statement(Rc::clone(&token)));
 
         stream.expect("(");
 
@@ -332,10 +314,7 @@ fn stmt<'token, 'vec>(
 }
 
 // compound_stmt := (declaration | stmt)* "}"
-fn compound_stmt<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn compound_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut nodes = Vec::new();
     let mut token = stream.consume("}");
 
@@ -353,10 +332,7 @@ fn compound_stmt<'token, 'vec>(
 }
 
 // declaration := "int" init_declarator
-fn declaration<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Option<Vec<Node<'token, 'vec>>> {
+fn declaration(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Option<Vec<Node>> {
     if stream.consume_keyword("int").is_some() {
         let ctype = CType::Int;
         let init_nodes = init_declarator(stream, add_info, &ctype);
@@ -367,11 +343,11 @@ fn declaration<'token, 'vec>(
 }
 
 // init_declarator := (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-fn init_declarator<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
+fn init_declarator(
+    stream: &mut TokenStream,
     add_info: &mut AdditionalInfo,
     base: &CType,
-) -> Vec<Node<'token, 'vec>> {
+) -> Vec<Node> {
     let mut init_nodes = Vec::new();
 
     if stream.consume(";").is_some() {
@@ -399,11 +375,11 @@ fn init_declarator<'token, 'vec>(
 }
 
 // declarator := "*"* ident
-fn declarator<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
+fn declarator(
+    stream: &mut TokenStream,
     add_info: &mut AdditionalInfo,
     base: &CType,
-) -> (String, &'vec Token<'token>) {
+) -> (String, Rc<Token>) {
     let mut ctype = base.clone();
     while stream.consume("*").is_some() {
         ctype = CType::Pointer(Box::new(ctype));
@@ -413,15 +389,12 @@ fn declarator<'token, 'vec>(
     add_info
         .current_fn_mut()
         .expect("関数定義外での宣言です")
-        .add_lvar(&name, ctype, token);
+        .add_lvar(&name, ctype, &token);
     (name, token)
 }
 
 // expr_stmt := expr? ";"
-fn expr_stmt<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn expr_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if let Some(token) = stream.consume(";") {
         Node::null_statement(token)
     } else {
@@ -432,18 +405,12 @@ fn expr_stmt<'token, 'vec>(
 }
 
 // expr := assign
-fn expr<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn expr(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     assign(stream, add_info)
 }
 
 // assign := equality ("=" assign)?
-fn assign<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn assign(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = equality(stream, add_info);
 
     if let Some(token) = stream.consume("=") {
@@ -456,10 +423,7 @@ fn assign<'token, 'vec>(
 }
 
 // equality := relational ("==" relational | "!=" relational)*
-fn equality<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn equality(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = relational(stream, add_info);
 
     loop {
@@ -478,10 +442,7 @@ fn equality<'token, 'vec>(
 }
 
 // relational := add ("<" add | "<=" add | ">" add | ">=" add)*
-fn relational<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn relational(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = add(stream, add_info);
 
     loop {
@@ -510,10 +471,7 @@ fn relational<'token, 'vec>(
 }
 
 // expr := mul ("+" mul | "-" mul)*
-fn add<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn add(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = mul(stream, add_info);
 
     loop {
@@ -532,10 +490,7 @@ fn add<'token, 'vec>(
 }
 
 // mul := unary ("*" unary | "/" unary)*
-fn mul<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn mul(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = unary(stream, add_info);
 
     loop {
@@ -554,14 +509,11 @@ fn mul<'token, 'vec>(
 }
 
 // unary := (("+" | "-" | "&" | "*")? unary) | primary
-fn unary<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if stream.consume("+").is_some() {
         unary(stream, add_info)
     } else if let Some(token) = stream.consume("-") {
-        let lhs = Box::new(Node::new(token, NodeKind::Num(0)));
+        let lhs = Box::new(Node::new(Rc::clone(&token), NodeKind::Num(0)));
         let rhs = Box::new(unary(stream, add_info));
         Node::new(token, NodeKind::Sub(lhs, rhs))
     } else if let Some(token) = stream.consume("&") {
@@ -575,11 +527,8 @@ fn unary<'token, 'vec>(
     }
 }
 
-// primary := "(" expr ")" | num | ident call-args?
-fn primary<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Node<'token, 'vec> {
+// primary := "(" expr ")" | num | ident call_args?
+fn primary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if stream.consume("(").is_some() {
         let node = expr(stream, add_info);
         stream.expect(")");
@@ -602,11 +551,8 @@ fn primary<'token, 'vec>(
     }
 }
 
-// call-args := "(" (expr ("," expr)*)? ")"
-fn call_args<'token, 'vec>(
-    stream: &mut TokenStream<'token, 'vec>,
-    add_info: &mut AdditionalInfo,
-) -> Option<Vec<Node<'token, 'vec>>> {
+// call_args := "(" (expr ("," expr)*)? ")"
+fn call_args(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Option<Vec<Node>> {
     if stream.consume("(").is_some() {
         let mut args = Vec::new();
 
