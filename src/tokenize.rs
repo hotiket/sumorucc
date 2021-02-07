@@ -10,13 +10,13 @@ pub struct TokenCommon {
 
 enum TokenKind {
     // 記号
-    RESERVED,
+    Reserved,
     // 識別子
-    IDENT,
+    Ident,
     // キーワード
-    KEYWORD,
+    Keyword,
     // 整数
-    NUM(isize),
+    Num(isize),
     // 入力の終わりを表すトークン
     EOF,
 }
@@ -77,7 +77,7 @@ impl<'vec> TokenStream<'vec> {
         match self.peek().as_deref() {
             Some(Token {
                 common,
-                kind: TokenKind::RESERVED,
+                kind: TokenKind::Reserved,
             }) if common.token_str == op => self.next(),
             _ => None,
         }
@@ -88,7 +88,7 @@ impl<'vec> TokenStream<'vec> {
     pub fn consume_number(&mut self) -> Option<(Rc<Token>, isize)> {
         match self.peek().as_deref() {
             Some(Token {
-                kind: TokenKind::NUM(n),
+                kind: TokenKind::Num(n),
                 ..
             }) => Some((self.next().unwrap(), *n)),
             _ => None,
@@ -101,7 +101,7 @@ impl<'vec> TokenStream<'vec> {
         match self.peek().as_deref() {
             Some(Token {
                 common,
-                kind: TokenKind::IDENT,
+                kind: TokenKind::Ident,
             }) => Some((self.next().unwrap(), common.token_str.clone())),
             _ => None,
         }
@@ -113,7 +113,7 @@ impl<'vec> TokenStream<'vec> {
         match self.peek().as_deref() {
             Some(Token {
                 common,
-                kind: TokenKind::KEYWORD,
+                kind: TokenKind::Keyword,
                 ..
             }) if common.token_str == keyword => self.next(),
             _ => None,
@@ -229,7 +229,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                         src: Rc::clone(&src),
                         pos,
                     },
-                    kind: TokenKind::NUM(n),
+                    kind: TokenKind::Num(n),
                 }));
             }
 
@@ -253,7 +253,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                         src: Rc::clone(&src),
                         pos,
                     },
-                    kind: TokenKind::RESERVED,
+                    kind: TokenKind::Reserved,
                 }));
             }
 
@@ -271,9 +271,9 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                 let token_str = src[byte_s..byte_e].to_string();
 
                 let kind = if is_keyword(&token_str) {
-                    TokenKind::KEYWORD
+                    TokenKind::Keyword
                 } else {
-                    TokenKind::IDENT
+                    TokenKind::Ident
                 };
                 let common = TokenCommon {
                     token_str,
