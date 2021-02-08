@@ -10,7 +10,7 @@ pub struct TokenCommon {
 
 enum TokenKind {
     // 記号
-    Reserved,
+    Punctuator,
     // 識別子
     Ident,
     // キーワード
@@ -73,11 +73,11 @@ impl<'vec> TokenStream<'vec> {
     // 次のトークンが期待している記号のときには、
     // そのトークンをSomeで包んで返し、トークンを1つ読み進める。
     // それ以外の場合にはNoneを返す。
-    pub fn consume(&mut self, op: &str) -> Option<Rc<Token>> {
+    pub fn consume_punctuator(&mut self, op: &str) -> Option<Rc<Token>> {
         match self.peek().as_deref() {
             Some(Token {
                 common,
-                kind: TokenKind::Reserved,
+                kind: TokenKind::Punctuator,
             }) if common.token_str == op => self.next(),
             _ => None,
         }
@@ -122,8 +122,8 @@ impl<'vec> TokenStream<'vec> {
 
     // 次のトークンが期待している記号のときには、そのトークンを返し
     // トークンを1つ読み進める。それ以外の場合にはエラーを報告する。
-    pub fn expect(&mut self, op: &str) -> Rc<Token> {
-        let token = self.consume(op);
+    pub fn expect_punctuator(&mut self, op: &str) -> Rc<Token> {
+        let token = self.consume_punctuator(op);
 
         if token.is_none() {
             error_at!(self.get_src(), self.pos(), "{}ではありません", op);
@@ -234,10 +234,10 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
             }
 
             // "+", "*", ";"といった記号
-            _ if is_reserved(&src[byte_s..byte_e]) => {
+            _ if is_punctuator(&src[byte_s..byte_e]) => {
                 while let Some((_, (_, c))) = src_iter.peek() {
                     let new_byte_e = byte_e + c.len_utf8();
-                    if is_reserved(&src[byte_s..new_byte_e]) {
+                    if is_punctuator(&src[byte_s..new_byte_e]) {
                         byte_e = new_byte_e;
                         src_iter.next();
                     } else {
@@ -253,7 +253,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                         src: Rc::clone(&src),
                         pos,
                     },
-                    kind: TokenKind::Reserved,
+                    kind: TokenKind::Punctuator,
                 }));
             }
 

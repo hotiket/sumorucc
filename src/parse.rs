@@ -188,7 +188,7 @@ fn function_definition(stream: &mut TokenStream, add_info: &mut AdditionalInfo) 
         error_tok!(token, "引数が6つを超える関数定義はサポートしていません");
     }
 
-    stream.expect("{");
+    stream.expect_punctuator("{");
     let body = Box::new(compound_stmt(stream, add_info));
 
     Node::new(token, NodeKind::Defun(name, args, body))
@@ -202,11 +202,11 @@ fn function_declarator(
     let (func_token, func_name) = stream.expect_identifier();
     add_info.add_fn(&func_name, &func_token);
 
-    stream.expect("(");
+    stream.expect_punctuator("(");
 
     let mut args = Vec::new();
 
-    if stream.consume(")").is_some() {
+    if stream.consume_punctuator(")").is_some() {
         return (func_token, func_name, args);
     }
 
@@ -224,12 +224,12 @@ fn function_declarator(
         let lvar = add_info.current_fn().unwrap().find_lvar(&arg_name).unwrap();
         args.push(lvar.offset);
 
-        if stream.consume(",").is_none() {
+        if stream.consume_punctuator(",").is_none() {
             break;
         }
     }
 
-    stream.expect(")");
+    stream.expect_punctuator(")");
 
     (func_token, func_name, args)
 }
@@ -243,14 +243,14 @@ fn function_declarator(
 fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if let Some(token) = stream.consume_keyword("return") {
         let node = expr(stream, add_info);
-        stream.expect(";");
+        stream.expect_punctuator(";");
         Node::new(token, NodeKind::Return(Box::new(node)))
-    } else if stream.consume("{").is_some() {
+    } else if stream.consume_punctuator("{").is_some() {
         compound_stmt(stream, add_info)
     } else if let Some(token) = stream.consume_keyword("if") {
-        stream.expect("(");
+        stream.expect_punctuator("(");
         let cond_node = Box::new(expr(stream, add_info));
-        stream.expect(")");
+        stream.expect_punctuator(")");
 
         let then_node = Box::new(stmt(stream, add_info));
 
@@ -263,24 +263,24 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
         Node::new(token, NodeKind::If(cond_node, then_node, else_node))
     } else if let Some(token) = stream.consume_keyword("for") {
-        stream.expect("(");
+        stream.expect_punctuator("(");
 
         let init_node = Box::new(expr_stmt(stream, add_info));
 
-        let cond_node = if let Some(token) = stream.consume(";") {
+        let cond_node = if let Some(token) = stream.consume_punctuator(";") {
             // 終了条件が無い場合は非0の値に置き換える
             Box::new(Node::new(token, NodeKind::Num(1)))
         } else {
             let node = Box::new(expr(stream, add_info));
-            stream.expect(";");
+            stream.expect_punctuator(";");
             node
         };
 
-        let update_node = if let Some(token) = stream.consume(")") {
+        let update_node = if let Some(token) = stream.consume_punctuator(")") {
             Box::new(Node::null_statement(token))
         } else {
             let node = Box::new(expr(stream, add_info));
-            stream.expect(")");
+            stream.expect_punctuator(")");
             node
         };
 
@@ -295,11 +295,11 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         let init_node = Box::new(Node::null_statement(Rc::clone(&token)));
         let update_node = Box::new(Node::null_statement(Rc::clone(&token)));
 
-        stream.expect("(");
+        stream.expect_punctuator("(");
 
         let cond_node = Box::new(expr(stream, add_info));
 
-        stream.expect(")");
+        stream.expect_punctuator(")");
 
         let body_node = Box::new(stmt(stream, add_info));
 
@@ -316,7 +316,7 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 // compound_stmt := (declaration | stmt)* "}"
 fn compound_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut nodes = Vec::new();
-    let mut token = stream.consume("}");
+    let mut token = stream.consume_punctuator("}");
 
     while token.is_none() {
         if let Some(init_nodes) = declaration(stream, add_info) {
@@ -325,7 +325,7 @@ fn compound_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Nod
             nodes.push(stmt(stream, add_info));
         }
 
-        token = stream.consume("}");
+        token = stream.consume_punctuator("}");
     }
 
     Node::new(token.unwrap(), NodeKind::Block(nodes))
@@ -350,26 +350,26 @@ fn init_declarator(
 ) -> Vec<Node> {
     let mut init_nodes = Vec::new();
 
-    if stream.consume(";").is_some() {
+    if stream.consume_punctuator(";").is_some() {
         return init_nodes;
     }
 
     loop {
         let (ident_name, ident_token) = declarator(stream, add_info, base);
 
-        if let Some(assign_token) = stream.consume("=") {
+        if let Some(assign_token) = stream.consume_punctuator("=") {
             let lhs = Box::new(Node::lvar(ident_name, ident_token, add_info));
             let rhs = Box::new(expr(stream, add_info));
             let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
             init_nodes.push(init_node);
         }
 
-        if stream.consume(",").is_none() {
+        if stream.consume_punctuator(",").is_none() {
             break;
         }
     }
 
-    stream.expect(";");
+    stream.expect_punctuator(";");
 
     init_nodes
 }
@@ -381,7 +381,7 @@ fn declarator(
     base: &CType,
 ) -> (String, Rc<Token>) {
     let mut ctype = base.clone();
-    while stream.consume("*").is_some() {
+    while stream.consume_punctuator("*").is_some() {
         ctype = CType::Pointer(Box::new(ctype));
     }
 
@@ -395,11 +395,11 @@ fn declarator(
 
 // expr_stmt := expr? ";"
 fn expr_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    if let Some(token) = stream.consume(";") {
+    if let Some(token) = stream.consume_punctuator(";") {
         Node::null_statement(token)
     } else {
         let node = expr(stream, add_info);
-        stream.expect(";");
+        stream.expect_punctuator(";");
         node
     }
 }
@@ -413,7 +413,7 @@ fn expr(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 fn assign(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = equality(stream, add_info);
 
-    if let Some(token) = stream.consume("=") {
+    if let Some(token) = stream.consume_punctuator("=") {
         let lhs = Box::new(node);
         let rhs = Box::new(assign(stream, add_info));
         node = Node::new(token, NodeKind::Assign(lhs, rhs));
@@ -427,11 +427,11 @@ fn equality(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = relational(stream, add_info);
 
     loop {
-        if let Some(token) = stream.consume("==") {
+        if let Some(token) = stream.consume_punctuator("==") {
             let lhs = Box::new(node);
             let rhs = Box::new(relational(stream, add_info));
             node = Node::new(token, NodeKind::Eq(lhs, rhs));
-        } else if let Some(token) = stream.consume("!=") {
+        } else if let Some(token) = stream.consume_punctuator("!=") {
             let lhs = Box::new(node);
             let rhs = Box::new(relational(stream, add_info));
             node = Node::new(token, NodeKind::Neq(lhs, rhs));
@@ -446,20 +446,20 @@ fn relational(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = add(stream, add_info);
 
     loop {
-        if let Some(token) = stream.consume("<") {
+        if let Some(token) = stream.consume_punctuator("<") {
             let lhs = Box::new(node);
             let rhs = Box::new(add(stream, add_info));
             node = Node::new(token, NodeKind::LT(lhs, rhs));
-        } else if let Some(token) = stream.consume("<=") {
+        } else if let Some(token) = stream.consume_punctuator("<=") {
             let lhs = Box::new(node);
             let rhs = Box::new(add(stream, add_info));
             node = Node::new(token, NodeKind::LTE(lhs, rhs));
-        } else if let Some(token) = stream.consume(">") {
+        } else if let Some(token) = stream.consume_punctuator(">") {
             let lhs = Box::new(node);
             let rhs = Box::new(add(stream, add_info));
             // LTの左右のオペランドを入れ替えてGTにする
             node = Node::new(token, NodeKind::LT(rhs, lhs));
-        } else if let Some(token) = stream.consume(">=") {
+        } else if let Some(token) = stream.consume_punctuator(">=") {
             let lhs = Box::new(node);
             let rhs = Box::new(add(stream, add_info));
             // LTEの左右のオペランドを入れ替えてGTEにする
@@ -475,11 +475,11 @@ fn add(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = mul(stream, add_info);
 
     loop {
-        if let Some(token) = stream.consume("+") {
+        if let Some(token) = stream.consume_punctuator("+") {
             let lhs = Box::new(node);
             let rhs = Box::new(mul(stream, add_info));
             node = Node::new(token, NodeKind::Add(lhs, rhs));
-        } else if let Some(token) = stream.consume("-") {
+        } else if let Some(token) = stream.consume_punctuator("-") {
             let lhs = Box::new(node);
             let rhs = Box::new(mul(stream, add_info));
             node = Node::new(token, NodeKind::Sub(lhs, rhs));
@@ -494,11 +494,11 @@ fn mul(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = unary(stream, add_info);
 
     loop {
-        if let Some(token) = stream.consume("*") {
+        if let Some(token) = stream.consume_punctuator("*") {
             let lhs = Box::new(node);
             let rhs = Box::new(unary(stream, add_info));
             node = Node::new(token, NodeKind::Mul(lhs, rhs));
-        } else if let Some(token) = stream.consume("/") {
+        } else if let Some(token) = stream.consume_punctuator("/") {
             let lhs = Box::new(node);
             let rhs = Box::new(unary(stream, add_info));
             node = Node::new(token, NodeKind::Div(lhs, rhs));
@@ -510,16 +510,16 @@ fn mul(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
 // unary := (("+" | "-" | "&" | "*")? unary) | primary
 fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    if stream.consume("+").is_some() {
+    if stream.consume_punctuator("+").is_some() {
         unary(stream, add_info)
-    } else if let Some(token) = stream.consume("-") {
+    } else if let Some(token) = stream.consume_punctuator("-") {
         let lhs = Box::new(Node::new(Rc::clone(&token), NodeKind::Num(0)));
         let rhs = Box::new(unary(stream, add_info));
         Node::new(token, NodeKind::Sub(lhs, rhs))
-    } else if let Some(token) = stream.consume("&") {
+    } else if let Some(token) = stream.consume_punctuator("&") {
         let operand = Box::new(unary(stream, add_info));
         Node::new(token, NodeKind::Addr(operand))
-    } else if let Some(token) = stream.consume("*") {
+    } else if let Some(token) = stream.consume_punctuator("*") {
         let operand = Box::new(unary(stream, add_info));
         Node::new(token, NodeKind::Deref(operand))
     } else {
@@ -529,9 +529,9 @@ fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
 // primary := "(" expr ")" | num | ident call_args?
 fn primary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    if stream.consume("(").is_some() {
+    if stream.consume_punctuator("(").is_some() {
         let node = expr(stream, add_info);
-        stream.expect(")");
+        stream.expect_punctuator(")");
         node
     } else if let Some((token, n)) = stream.consume_number() {
         Node::new(token, NodeKind::Num(n))
@@ -553,22 +553,22 @@ fn primary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
 // call_args := "(" (expr ("," expr)*)? ")"
 fn call_args(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Option<Vec<Node>> {
-    if stream.consume("(").is_some() {
+    if stream.consume_punctuator("(").is_some() {
         let mut args = Vec::new();
 
-        if stream.consume(")").is_some() {
+        if stream.consume_punctuator(")").is_some() {
             return Some(args);
         }
 
         loop {
             let arg = expr(stream, add_info);
             args.push(arg);
-            if stream.consume(",").is_none() {
+            if stream.consume_punctuator(",").is_none() {
                 break;
             }
         }
 
-        stream.expect(")");
+        stream.expect_punctuator(")");
 
         Some(args)
     } else {
