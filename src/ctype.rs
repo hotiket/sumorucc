@@ -9,15 +9,16 @@ use super::tokenize::Token;
 pub enum CType {
     Int,
     Pointer(Box<Self>),
+    Array(Box<Self>, usize),
     Statement,
 }
 
 impl CType {
     pub fn new(token: &Rc<Token>, kind: &mut NodeKind) -> Result<Self, String> {
-        // ポインタ同士の減算の場合、減算結果をポインタが指す
-        // 型のサイズで割り、要素数を返すようにkindを置き換える
-        // 必要がある。matchの中だとkindが再借用となりコンパイル
-        // できないため、ポインタの減算のみmatchの前に処理する。
+        // kindの種別によってはkindを置き換える必要があるが
+        // matchの中で置き換えようとするとkindの再借用となり
+        // コンパイルできない。よって、kindを置き換える場合のみ
+        // matchの前に処理をする。
         if let Some(ctype) = Self::new_ptr_sub(token, kind) {
             return Ok(ctype);
         }
@@ -50,6 +51,18 @@ impl CType {
                     Self::index(lhs, base.size());
                     Ok(rhs.ctype.clone())
                 }
+                (Self::Array(base, _), Self::Int) => {
+                    let base = base.clone();
+                    Self::array_to_ptr(lhs);
+                    Self::index(rhs, base.size());
+                    Ok(CType::Pointer(base))
+                }
+                (Self::Int, Self::Array(base, _)) => {
+                    let base = base.clone();
+                    Self::index(lhs, base.size());
+                    Self::array_to_ptr(rhs);
+                    Ok(CType::Pointer(base))
+                }
                 _ => Err(invalid_operand),
             },
             NodeKind::Mul(lhs, rhs) | NodeKind::Div(lhs, rhs) => match (&lhs.ctype, &rhs.ctype) {
@@ -73,7 +86,8 @@ impl CType {
         }
     }
 
-    // ポインタ同士の減算用の処理
+    // ポインタ同士の減算用の処理。減算結果をポインタが指す
+    // 型のサイズで割り、要素数を返すようにkindを置き換える。
     fn new_ptr_sub(token: &Rc<Token>, kind: &mut NodeKind) -> Option<Self> {
         // kindが同じ型のポインタ同士の減算かチェック
         let base_size = if let NodeKind::Sub(lhs, rhs) = kind {
@@ -100,11 +114,41 @@ impl CType {
         }
     }
 
+    // 配列からポインタへの暗黙の型変換。
+    // ポインタを返すようにAddr(node)に置き換える。
+    fn array_to_ptr(node: &mut Node) {
+        // Arrayのときだけ呼ばれるのでunwrapして問題ない
+        let base = node.ctype.base().unwrap().clone();
+        let ctype = CType::Pointer(Box::new(base));
+
+        let token = Rc::clone(&node.token);
+
+        // ダミーノードと元のノードを入れ替える
+        let dummy_node = Node::null_statement(Rc::clone(&token));
+        let org_node = replace(node, dummy_node);
+
+        // ポインタ演算するためにアドレスを返すようにする
+        let kind = NodeKind::Addr(Box::new(org_node));
+
+        // Addr(node)にしたノードと元のノードを入れ替える
+        let mut new_node = Node { token, kind, ctype };
+        swap(node, &mut new_node);
+    }
+
     pub fn size(&self) -> usize {
         match self {
             Self::Int => 8,
             Self::Pointer(_) => 8,
+            Self::Array(base, size) => base.size() * size,
             Self::Statement => 0,
+        }
+    }
+
+    fn base(&self) -> Option<&Self> {
+        match self {
+            Self::Array(base, _) => Some(&base),
+            Self::Pointer(base) => Some(&base),
+            _ => None,
         }
     }
 
@@ -146,6 +190,7 @@ impl fmt::Display for CType {
         match self {
             Self::Int => write!(f, "int"),
             Self::Pointer(base) => write!(f, "{}*", base),
+            Self::Array(base, size) => write!(f, "{}[{}]", base, size),
             Self::Statement => write!(f, "Statement"),
         }
     }

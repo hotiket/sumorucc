@@ -124,4 +124,9 @@ assert 100 "int f(int x){return x;} int main(){return f(100);}"
 assert 120 "int factorial(int x){if (x==1) return 1; return x*factorial(x-1);} int main(){return factorial(5);}"
 assert 10 "int sub(int x, int y){return x-y;} int main(){int x=sub(2, 5); int y=sub(8, 1); return sub(y, x);}"
 
+assert 12 "int main(){int a=5; int x[3]; int b=7; x[0]=1; x[1]=2; x[2]=3; int i=0; return x[i]*10 + (a==5) + (b==7);}"
+assert 22 "int main(){int a=5; int x[3]; int b=7; x[0]=1; x[1]=2; x[2]=3; int i=1; return x[i]*10 + (a==5) + (b==7);}"
+assert 32 "int main(){int a=5; int x[3]; int b=7; x[0]=1; x[1]=2; x[2]=3; int i=2; return x[i]*10 + (a==5) + (b==7);}"
+assert 3 "int main(){int x[2]; 0[x]=5; 1[x]=3; return (x[1-1]-(5-4)[x]-1)[x];}"
+
 echo OK

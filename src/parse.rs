@@ -98,16 +98,9 @@ impl Function {
             error_tok!(token, "すでに宣言されています");
         }
 
-        // ローカル変数を新しく登録する
-        let offset = if let Some(lvar) = self.lvars.last() {
-            // ローカル変数のリストになければ、リスト最後の
-            // ローカル変数の次に配置する
-            lvar.offset + lvar.ctype.size()
-        } else {
-            // ローカル変数のリスト自体が空ならスタックに
-            // 積まれているRBPの次となる8から始める
-            8
-        };
+        // リスト最後のローカル変数の次に登録する
+        let last_offset = self.lvars.last().map_or(0, |lvar| lvar.offset);
+        let offset = last_offset + ctype.size();
 
         self.lvars.push(LVar {
             name: name.to_string(),
@@ -374,7 +367,7 @@ fn init_declarator(
     init_nodes
 }
 
-// declarator := "*"* ident
+// declarator := "*"* ident ("[" num "]")?
 fn declarator(
     stream: &mut TokenStream,
     add_info: &mut AdditionalInfo,
@@ -386,6 +379,16 @@ fn declarator(
     }
 
     let (token, name) = stream.expect_identifier();
+
+    if stream.consume_punctuator("[").is_some() {
+        let (token, n) = stream.expect_number();
+        if n <= 0 {
+            error_tok!(token, "要素数が0以下の配列は定義できません");
+        }
+        ctype = CType::Array(Box::new(ctype), n as usize);
+        stream.expect_punctuator("]");
+    }
+
     add_info
         .current_fn_mut()
         .expect("関数定義外での宣言です")
@@ -508,7 +511,7 @@ fn mul(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     }
 }
 
-// unary := (("+" | "-" | "&" | "*")? unary) | primary
+// unary := (("+" | "-" | "&" | "*")? unary) | postfix
 fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     if stream.consume_punctuator("+").is_some() {
         unary(stream, add_info)
@@ -523,8 +526,27 @@ fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         let operand = Box::new(unary(stream, add_info));
         Node::new(token, NodeKind::Deref(operand))
     } else {
-        primary(stream, add_info)
+        postfix(stream, add_info)
     }
+}
+
+// postfix := primary ("[" expr "]")?
+fn postfix(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+    let mut node = primary(stream, add_info);
+
+    if let Some(bracket_token) = stream.consume_punctuator("[") {
+        let index = Box::new(expr(stream, add_info));
+
+        node = Node::new(
+            Rc::clone(&bracket_token),
+            NodeKind::Add(Box::new(node), index),
+        );
+        node = Node::new(bracket_token, NodeKind::Deref(Box::new(node)));
+
+        stream.expect_punctuator("]");
+    }
+
+    node
 }
 
 // primary := "(" expr ")" | num | ident call_args?

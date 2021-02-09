@@ -132,6 +132,18 @@ impl<'vec> TokenStream<'vec> {
         token.unwrap()
     }
 
+    // 次のトークンが数値の場合、そのトークンと数値を返し、トークンを
+    // 1つ読み進める。それ以外の場合にはエラーを報告する。
+    pub fn expect_number(&mut self) -> (Rc<Token>, isize) {
+        let token_num = self.consume_number();
+
+        if token_num.is_none() {
+            error_at!(self.get_src(), self.pos(), "数値ではありません");
+        }
+
+        token_num.unwrap()
+    }
+
     // 次のトークンが識別子の場合、そのトークンを返し、トークンを
     // 1つ読み進める。それ以外の場合にはエラーを報告する。
     pub fn expect_identifier(&mut self) -> (Rc<Token>, String) {
@@ -167,9 +179,10 @@ impl<'vec> TokenStream<'vec> {
     }
 }
 
-fn is_reserved(test_op: &str) -> bool {
+fn is_punctuator(test_op: &str) -> bool {
     let symbols = [
         "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}", "&", ",",
+        "[", "]",
     ];
 
     for symbol in &symbols {
