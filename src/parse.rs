@@ -367,7 +367,7 @@ fn init_declarator(
     init_nodes
 }
 
-// declarator := "*"* ident ("[" num "]")?
+// declarator := "*"* ident ("[" num "]")*
 fn declarator(
     stream: &mut TokenStream,
     add_info: &mut AdditionalInfo,
@@ -380,13 +380,20 @@ fn declarator(
 
     let (token, name) = stream.expect_identifier();
 
-    if stream.consume_punctuator("[").is_some() {
+    let mut array_sizes = Vec::new();
+    while stream.consume_punctuator("[").is_some() {
         let (token, n) = stream.expect_number();
         if n <= 0 {
             error_tok!(token, "要素数が0以下の配列は定義できません");
         }
-        ctype = CType::Array(Box::new(ctype), n as usize);
+        array_sizes.push(n as usize);
         stream.expect_punctuator("]");
+    }
+
+    // int[2][3]はArray(Array(int, 3), 2)となるので
+    // 逆順に配列サイズを見ていく。
+    for n in array_sizes.into_iter().rev() {
+        ctype = CType::Array(Box::new(ctype), n);
     }
 
     add_info
@@ -530,11 +537,11 @@ fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     }
 }
 
-// postfix := primary ("[" expr "]")?
+// postfix := primary ("[" expr "]")*
 fn postfix(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     let mut node = primary(stream, add_info);
 
-    if let Some(bracket_token) = stream.consume_punctuator("[") {
+    while let Some(bracket_token) = stream.consume_punctuator("[") {
         let index = Box::new(expr(stream, add_info));
 
         node = Node::new(

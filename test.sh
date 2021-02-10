@@ -129,4 +129,14 @@ assert 22 "int main(){int a=5; int x[3]; int b=7; x[0]=1; x[1]=2; x[2]=3; int i=
 assert 32 "int main(){int a=5; int x[3]; int b=7; x[0]=1; x[1]=2; x[2]=3; int i=2; return x[i]*10 + (a==5) + (b==7);}"
 assert 3 "int main(){int x[2]; 0[x]=5; 1[x]=3; return (x[1-1]-(5-4)[x]-1)[x];}"
 
+assert 12 "int main(){int a=5; int x[2][2]; int b=7; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return x[0][0]*10 + (a==5) + (b==7);}"
+assert 22 "int main(){int a=5; int x[2][2]; int b=7; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return x[0][1]*10 + (a==5) + (b==7);}"
+assert 32 "int main(){int a=5; int x[2][2]; int b=7; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return x[1][0]*10 + (a==5) + (b==7);}"
+assert 42 "int main(){int a=5; int x[2][2]; int b=7; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return x[1][1]*10 + (a==5) + (b==7);}"
+assert 1 "int main(){int x[2][2], *p=&x[0][0]; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return p[0];}"
+assert 2 "int main(){int x[2][2], *p=&x[0][0]; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return p[1];}"
+assert 3 "int main(){int x[2][2], *p=&x[0][0]; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return p[2];}"
+assert 4 "int main(){int x[2][2], *p=&x[0][0]; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return p[3];}"
+assert 11 "int main(){int x[2][3][4]; x[1][2][3] = 11; int a=2; return (a+1)[a[(x[1][2][3]-10)[x]]];}"
+
 echo OK
