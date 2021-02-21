@@ -149,4 +149,9 @@ assert 0 "int g[3][4]; int init(){int i,j; for(i=0;i<3;i=i+1)for(j=0;j<4;j=j+1)g
 assert 13 "int g[3][4]; int init(){int i,j; for(i=0;i<3;i=i+1)for(j=0;j<4;j=j+1)g[i][j]=i*10+j; return 0;} int main(){init(); return g[1][3];}"
 assert 22 "int g[3][4]; int init(){int i,j; for(i=0;i<3;i=i+1)for(j=0;j<4;j=j+1)g[i][j]=i*10+j; return 0;} int main(){init(); return g[2][2];}"
 
+assert 1 "int main(){int x=1; {int x=2;} return x;}"
+assert 7 "int main(){int x=7; {int x; {x=5;}} return x;}"
+assert 5 "int main(){int x=11; {int x=13;} {x=5;} return x;}"
+assert 8 "int main(){int x=1, y=2; {int x=2; y=y+x;} if (x==1) {y=y*2;} return y;}"
+
 echo OK
