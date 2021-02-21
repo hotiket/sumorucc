@@ -154,4 +154,15 @@ assert 7 "int main(){int x=7; {int x; {x=5;}} return x;}"
 assert 5 "int main(){int x=11; {int x=13;} {x=5;} return x;}"
 assert 8 "int main(){int x=1, y=2; {int x=2; y=y+x;} if (x==1) {y=y*2;} return y;}"
 
+assert 8 "int main(){return sizeof 1;}"
+assert 8 "int main(){return sizeof sizeof 1;}"
+assert 8 "int main(){int x; return sizeof x;}"
+assert 8 "int main(){int x; return sizeof&x;}"
+assert 8 "int main(){int x=5; return sizeof(5+(x*x)/8);}"
+assert 40 "int main(){int x[5]; return sizeof x;}"
+assert 48 "int main(){int x[3][2]; return sizeof x;}"
+assert 16 "int main(){int x[4][2]; return sizeof x[2];}"
+assert 65 "int g[2][4]; int main(){return sizeof g+1;}"
+assert 2 "int main(){int x=2; sizeof(x=1); return x;}"
+
 echo OK

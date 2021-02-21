@@ -787,7 +787,7 @@ fn mul(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     }
 }
 
-// unary := (("+" | "-" | "&" | "*")? unary) | postfix
+// unary := (("+" | "-" | "&" | "*" | "sizeof")? unary) | postfix
 fn unary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     if stream.consume_punctuator("+").is_some() {
         unary(stream, ctx)
@@ -801,6 +801,9 @@ fn unary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     } else if let Some(token) = stream.consume_punctuator("*") {
         let operand = Box::new(unary(stream, ctx));
         Node::new(token, NodeKind::Deref(operand))
+    } else if let Some(token) = stream.consume_keyword("sizeof") {
+        let operand = unary(stream, ctx);
+        Node::new(token, NodeKind::Num(operand.ctype.size() as isize))
     } else {
         postfix(stream, ctx)
     }
