@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::parse::{AdditionalInfo, Node, NodeKind};
+use super::parse::{GVar, Node, NodeKind, ParseContext};
 
 struct Context {
     fname: String,
@@ -74,12 +74,14 @@ fn gen_binary_operator(lhs: &Node, rhs: &Node, ctx: &mut Context) {
     pop(Register::RDI, ctx);
 }
 
-// 変数のアドレスをraxにmovする
+// 変数のアドレスをraxにセットする
 fn gen_lval(node: &Node, ctx: &mut Context) {
     match &node.kind {
         NodeKind::LVar(_, _, offset) => {
-            println!("        mov %rbp, %rax");
-            println!("        sub ${}, %rax", offset);
+            println!("        lea -{}(%rbp), %rax", offset);
+        }
+        NodeKind::GVar(name, _) => {
+            println!("        lea {}(%rip), %rax", name);
         }
         NodeKind::Deref(operand) => {
             gen(operand, ctx);
@@ -204,7 +206,7 @@ fn gen(node: &Node, ctx: &mut Context) {
         NodeKind::Num(n) => {
             println!("        mov ${}, %rax", n);
         }
-        NodeKind::LVar(..) => {
+        NodeKind::LVar(..) | NodeKind::GVar(..) => {
             gen_lval(node, ctx);
             println!("        mov (%rax), %rax");
         }
@@ -242,10 +244,21 @@ fn gen(node: &Node, ctx: &mut Context) {
     }
 }
 
-fn prologue(name: &str, mut stack_size: usize, args: &[usize], ctx: &mut Context) {
-    ctx.fname = name.to_string();
-    println!("{}:", name);
+fn gen_gvar(gvar: &GVar) {
+    println!("        .data");
+    println!("        .globl {}", gvar.name);
+    println!("{}:", gvar.name);
+    println!("        .zero {}", gvar.ctype.size());
+}
 
+fn function_header(name: &str, ctx: &mut Context) {
+    ctx.fname = name.to_string();
+    println!("        .text");
+    println!("        .globl {}", name);
+    println!("{}:", name);
+}
+
+fn prologue(mut stack_size: usize, params: &[usize], ctx: &mut Context) {
     // 関数を呼ぶ時のRSPのアライメントをしやすくするために
     // スタックサイズを16の倍数にする。
     stack_size = (stack_size + 16 - 1) / 16 * 16;
@@ -256,7 +269,7 @@ fn prologue(name: &str, mut stack_size: usize, args: &[usize], ctx: &mut Context
 
     // x86-64の呼び出し規約に従い引数をレジスタから
     // スタック上のローカル変数にセットする。
-    for (offset, reg) in args.iter().zip(ARG_REG.iter()) {
+    for (offset, reg) in params.iter().zip(ARG_REG.iter()) {
         println!("        mov %rbp, %rax");
         println!("        sub ${}, %rax", offset);
         println!("        mov %{}, (%rax)", reg);
@@ -270,26 +283,22 @@ fn epilogue(ctx: &mut Context) {
     println!("        ret");
 }
 
-pub fn codegen(nodes: &[Node], add_info: &AdditionalInfo) {
-    println!(".global main");
-
+pub fn codegen(nodes: &[Node], parse_ctx: &ParseContext) {
     let mut ctx = Context::new();
 
+    // グローバル変数をdataセクションに出力
+    parse_ctx.gvars.iter().for_each(gen_gvar);
+
+    // グローバル関数をtextセクションに出力
     for node in nodes {
-        if let NodeKind::Defun(name, args, body) = &node.kind {
-            // ローカル変数はRBPからのオフセット順に並んでいるので
-            // 最後の要素のオフセットがスタックサイズとなる
-            let stack_size = if let Some(lvar) = add_info
-                .find_fn(name)
-                .expect("関数情報が見つかりません")
-                .lvars
-                .last()
-            {
-                lvar.offset
-            } else {
-                0
-            };
-            prologue(name, stack_size, args, &mut ctx);
+        if let NodeKind::Defun(name, params, body) = &node.kind {
+            let stack_size = parse_ctx
+                .stack_size(name)
+                .expect("関数情報が見つかりません");
+
+            function_header(name, &mut ctx);
+
+            prologue(stack_size, params, &mut ctx);
 
             gen(body, &mut ctx);
 

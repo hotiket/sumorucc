@@ -54,9 +54,9 @@ fn main() {
 
     let src = Rc::from(args[1].clone());
 
-    // トークナイズしてパースする
     let token = tokenize(src);
-    let (node, add_info) = parse(&token);
 
-    codegen(&node, &add_info);
+    let (node, parse_ctx) = parse(&token);
+
+    codegen(&node, &parse_ctx);
 }

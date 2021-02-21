@@ -4,7 +4,7 @@ use super::ctype::CType;
 use super::tokenize::{Token, TokenStream};
 
 pub enum NodeKind {
-    // name, args(offset), body
+    // name, params(offset), body
     Defun(String, Vec<usize>, Box<Node>),
     Block(Vec<Node>),
     Return(Box<Node>),
@@ -26,6 +26,8 @@ pub enum NodeKind {
     Num(isize),
     // name, type, offset
     LVar(String, CType, usize),
+    // name, type
+    GVar(String, CType),
     // name, args
     Call(String, Vec<Node>),
 }
@@ -53,169 +55,411 @@ impl Node {
         Self::new(token, NodeKind::Block(Vec::new()))
     }
 
-    pub fn lvar(name: String, token: Rc<Token>, add_info: &AdditionalInfo) -> Self {
-        // ローカル変数のスタックのオフセットを取得
-        let lvar = add_info
-            .current_fn()
-            .expect("関数定義外でのローカル変数参照です")
-            .find_lvar(&name);
-        if lvar.is_none() {
+    pub fn var(name: &str, token: Rc<Token>, ctx: &ParseContext) -> Self {
+        let var_kind = ctx.find_var(name);
+
+        if var_kind.is_none() {
             error_tok!(token, "宣言されていません");
         }
-        let lvar = lvar.unwrap();
-        let offset = lvar.offset;
 
-        Self::new(token, NodeKind::LVar(name, lvar.ctype.clone(), offset))
+        Self::new(token, var_kind.unwrap())
     }
 }
 
 pub struct LVar {
     // 変数の名前
     pub name: String,
+    // 変数の型
+    pub ctype: CType,
     // RBPからのオフセット
     pub offset: usize,
+}
+
+pub struct GVar {
+    // 変数の名前
+    pub name: String,
     // 変数の型
     pub ctype: CType,
 }
 
-pub struct Function {
-    pub name: String,
-    pub lvars: Vec<LVar>,
+struct Scope {
+    child: Option<Box<Self>>,
+    lvars: Vec<LVar>,
 }
 
-impl Function {
-    pub fn new(name: &str) -> Self {
+impl Scope {
+    fn new() -> Self {
         Self {
-            name: name.to_string(),
+            child: None,
             lvars: Vec::new(),
         }
     }
 
-    pub fn add_lvar(&mut self, name: &str, ctype: CType, token: &Rc<Token>) {
-        // 同名のローカル変数がすでに宣言されているかチェック
-        let lvar = self.find_lvar(name);
-        if lvar.is_some() {
-            error_tok!(token, "すでに宣言されています");
+    fn add_var(&mut self, name: &str, ctype: CType, offset: usize) -> Result<(), &str> {
+        if let Some(ref mut child) = self.child {
+            child.add_var(name, ctype, offset)
+        } else if self.find_current_var(name).is_some() {
+            Err("すでに定義されています")
+        } else {
+            self.lvars.push(LVar {
+                name: name.to_string(),
+                ctype,
+                offset,
+            });
+
+            Ok(())
+        }
+    }
+
+    fn find_var(&self, name: &str) -> Option<NodeKind> {
+        if let Some(ref child) = self.child {
+            let lvar = child.find_var(name);
+            if lvar.is_some() {
+                return lvar;
+            }
         }
 
-        // リスト最後のローカル変数の次に登録する
-        let last_offset = self.lvars.last().map_or(0, |lvar| lvar.offset);
-        let offset = last_offset + ctype.size();
+        self.find_current_var(name)
+    }
 
-        self.lvars.push(LVar {
+    fn find_current_var(&self, name: &str) -> Option<NodeKind> {
+        self.lvars
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| NodeKind::LVar(v.name.clone(), v.ctype.clone(), v.offset))
+    }
+
+    fn enter(&mut self) {
+        if let Some(ref mut child) = self.child {
+            child.enter();
+        } else {
+            self.child = Some(Box::new(Self::new()));
+        }
+    }
+
+    fn exit(&mut self) -> Result<(), &str> {
+        if self.child.is_none() {
+            return Err("対応するスコープがありません");
+        }
+
+        self.exit_impl();
+        Ok(())
+    }
+
+    // 戻り値: スコープ削除の可否
+    fn exit_impl(&mut self) -> bool {
+        if let Some(ref mut child) = self.child {
+            if !child.exit_impl() {
+                self.child = None;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    #[allow(dead_code)]
+    fn debug_print_lvars(&self) {
+        self.debug_print_lvars_impl(0);
+    }
+
+    #[allow(dead_code)]
+    fn debug_print_lvars_impl(&self, depth: usize) {
+        eprintln!("{}DEPTH={}", " ".repeat(depth), depth);
+        for lvar in self.lvars.iter() {
+            eprintln!("{}{} {}", " ".repeat(depth), &lvar.ctype, &lvar.name);
+        }
+
+        if let Some(ref child) = self.child {
+            child.debug_print_lvars_impl(depth + 1);
+        }
+    }
+}
+
+pub struct Function {
+    name: String,
+    stack_size: usize,
+    scope: Scope,
+}
+
+impl Function {
+    fn new(name: &str) -> Self {
+        Self {
             name: name.to_string(),
-            offset,
-            ctype,
-        });
+            stack_size: 0,
+            scope: Scope::new(),
+        }
     }
 
-    pub fn find_lvar(&self, name: &str) -> Option<&LVar> {
-        self.lvars.iter().find(|lvar| lvar.name == name)
+    fn add_var(&mut self, name: &str, ctype: CType) -> Result<(), &str> {
+        let offset = self.stack_size + ctype.size();
+        let result = self.scope.add_var(name, ctype, offset);
+
+        // 変数の追加に成功したらスタックサイズを更新する
+        if result.is_ok() {
+            self.stack_size = offset;
+        }
+
+        result
+    }
+
+    fn find_var(&self, name: &str) -> Option<NodeKind> {
+        self.scope.find_var(name)
+    }
+
+    fn enter(&mut self) {
+        self.scope.enter();
+    }
+
+    fn exit(&mut self) -> Result<(), &str> {
+        self.scope.exit()
+    }
+
+    #[allow(dead_code)]
+    fn debug_print_lvars(&self) {
+        self.scope.debug_print_lvars();
     }
 }
 
-pub struct AdditionalInfo {
-    functions: Vec<Function>,
+pub struct ParseContext {
+    pub funcs: Vec<Function>,
+    pub gvars: Vec<GVar>,
+    current_fn: Option<String>,
 }
 
-impl AdditionalInfo {
+impl ParseContext {
     pub fn new() -> Self {
         Self {
-            functions: Vec::new(),
+            funcs: Vec::new(),
+            gvars: Vec::new(),
+            current_fn: None,
         }
     }
 
-    pub fn add_fn(&mut self, name: &str, token: &Rc<Token>) {
-        // 同名の関数がすでに宣言されているかチェック
-        let lvar = self.find_fn(name);
-        if lvar.is_some() {
-            error_tok!(token, "すでに宣言されています");
+    pub fn stack_size(&self, name: &str) -> Option<usize> {
+        self.find_fn(name).map(|func| func.stack_size)
+    }
+
+    pub fn enter_fn(&mut self, name: &str) -> Result<(), &str> {
+        if self.current_fn.is_some() {
+            return Err("関数内での関数定義です");
         }
 
-        self.functions.push(Function::new(name));
+        if self.find_fn(name).is_none() && self.find_gvar(name).is_none() {
+            self.funcs.push(Function::new(name));
+            self.current_fn = Some(name.to_string());
+            Ok(())
+        } else {
+            Err("すでに定義されています")
+        }
+    }
+
+    pub fn exit_fn(&mut self) -> Result<(), &str> {
+        if self.current_fn.is_none() {
+            return Err("関数定義がされていません");
+        }
+
+        self.current_fn = None;
+        Ok(())
     }
 
     pub fn find_fn(&self, name: &str) -> Option<&Function> {
-        self.functions.iter().find(|function| function.name == name)
+        self.funcs.iter().find(|f| f.name == name)
     }
 
-    pub fn current_fn(&self) -> Option<&Function> {
-        self.functions.last()
+    pub fn find_fn_mut(&mut self, name: &str) -> Option<&mut Function> {
+        self.funcs.iter_mut().find(|f| f.name == name)
     }
 
-    pub fn current_fn_mut(&mut self) -> Option<&mut Function> {
-        self.functions.last_mut()
+    pub fn add_var(&mut self, name: &str, ctype: CType) -> Result<(), &str> {
+        if self.current_fn.is_some() {
+            // selfの再借用にならないよう処理中の関数名をクローンを作成する
+            let fn_name = self.current_fn.as_ref().unwrap().clone();
+            let func = self.find_fn_mut(&fn_name).unwrap();
+            func.add_var(name, ctype)
+        } else if self.find_gvar(name).is_some() || self.find_fn(name).is_some() {
+            Err("すでに定義されています")
+        } else {
+            self.gvars.push(GVar {
+                name: name.to_string(),
+                ctype,
+            });
+            Ok(())
+        }
+    }
+
+    pub fn find_var(&self, name: &str) -> Option<NodeKind> {
+        self.find_lvar(name).or_else(|| self.find_gvar(name))
+    }
+
+    pub fn find_lvar(&self, name: &str) -> Option<NodeKind> {
+        if let Some(ref fn_name) = self.current_fn {
+            let func = self.find_fn(fn_name).unwrap();
+            func.find_var(name)
+        } else {
+            None
+        }
+    }
+
+    pub fn find_gvar(&self, name: &str) -> Option<NodeKind> {
+        self.gvars
+            .iter()
+            .find(|v| v.name == name)
+            .map(|v| NodeKind::GVar(v.name.clone(), v.ctype.clone()))
+    }
+
+    pub fn enter_scope(&mut self) -> Result<(), &str> {
+        if self.current_fn.is_none() {
+            return Err("関数定義がされていません");
+        }
+
+        let fn_name = self.current_fn.as_ref().unwrap().clone();
+        let func = self.find_fn_mut(&fn_name).unwrap();
+        func.enter();
+        Ok(())
+    }
+
+    pub fn exit_scope(&mut self) -> Result<(), &str> {
+        if self.current_fn.is_none() {
+            return Err("関数定義がされていません");
+        }
+
+        let fn_name = self.current_fn.as_ref().unwrap().clone();
+        let func = self.find_fn_mut(&fn_name).unwrap();
+        func.exit()
+    }
+
+    #[allow(dead_code)]
+    fn debug_print_lvars(&self) {
+        self.find_fn(&self.current_fn.as_ref().unwrap())
+            .unwrap()
+            .debug_print_lvars();
     }
 }
 
-pub fn parse(token: &[Rc<Token>]) -> (Vec<Node>, AdditionalInfo) {
+pub fn parse(token: &[Rc<Token>]) -> (Vec<Node>, ParseContext) {
     let mut stream = TokenStream::new(token);
-    let mut add_info = AdditionalInfo::new();
-    let nodes = program(&mut stream, &mut add_info);
+    let mut ctx = ParseContext::new();
+    let nodes = program(&mut stream, &mut ctx);
 
     if !stream.at_eof() {
         error_tok!(stream.current().unwrap(), "余分なトークンがあります");
     }
 
-    (nodes, add_info)
+    (nodes, ctx)
 }
 
-// program := stmt*
-fn program(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Vec<Node> {
+// program := (function_definition | global_declaration)*
+fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
     let mut nodes = Vec::new();
 
     while !stream.at_eof() {
-        nodes.push(function_definition(stream, add_info));
+        if is_function(stream) {
+            nodes.push(function_definition(stream, ctx));
+        } else {
+            global_declaration(stream, ctx);
+        }
     }
 
     nodes
 }
 
+// "int" "*"* ident "(" ならば真を返す
+// それ以外は偽を返す
+fn is_function(stream: &mut TokenStream) -> bool {
+    let mut result = false;
+
+    let state = stream.save();
+
+    if stream.consume_keyword("int").is_some() {
+        while stream.consume_punctuator("*").is_some() {}
+        if stream.consume_identifier().is_some() && stream.consume_punctuator("(").is_some() {
+            result = true;
+        }
+    }
+
+    stream.restore(state);
+
+    result
+}
+
 // function_definition := "int" function_declarator "{" compound_stmt
-fn function_definition(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+fn function_definition(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     stream.expect_keyword("int");
 
-    let (token, name, args) = function_declarator(stream, add_info);
+    let (token, name, params) = function_declarator(stream);
 
-    if args.len() > 6 {
+    if params.len() > 6 {
         error_tok!(token, "引数が6つを超える関数定義はサポートしていません");
     }
 
-    stream.expect_punctuator("{");
-    let body = Box::new(compound_stmt(stream, add_info));
+    if let Err(msg) = ctx.enter_fn(&name) {
+        error_tok!(token, "{}", msg);
+    }
 
-    Node::new(token, NodeKind::Defun(name, args, body))
+    // 引数をローカル変数として登録する
+    for Parameter { token, name, ctype } in params.iter() {
+        if let Err(msg) = ctx.add_var(name, ctype.clone()) {
+            error_tok!(token, "{}", msg);
+        }
+    }
+
+    // Defun構築用に引数のオフセットを取得する
+    let mut offsets = Vec::new();
+    for Parameter {
+        token: _,
+        name,
+        ctype: _,
+    } in params.into_iter()
+    {
+        if let Some(NodeKind::LVar(_, _, offset)) = ctx.find_lvar(&name) {
+            offsets.push(offset);
+        } else {
+            unreachable!();
+        }
+    }
+
+    stream.expect_punctuator("{");
+    let body = Box::new(compound_stmt(stream, ctx));
+
+    if ctx.exit_fn().is_err() {
+        unreachable!();
+    }
+
+    Node::new(token, NodeKind::Defun(name, offsets, body))
+}
+
+struct Parameter {
+    token: Rc<Token>,
+    name: String,
+    ctype: CType,
+}
+
+impl Parameter {
+    fn new(token: Rc<Token>, name: String, ctype: CType) -> Self {
+        Self { token, name, ctype }
+    }
 }
 
 // function_declarator := ident "(" ("int" ident ("," "int" ident)*)? ")"
-fn function_declarator(
-    stream: &mut TokenStream,
-    add_info: &mut AdditionalInfo,
-) -> (Rc<Token>, String, Vec<usize>) {
+fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Parameter>) {
     let (func_token, func_name) = stream.expect_identifier();
-    add_info.add_fn(&func_name, &func_token);
 
     stream.expect_punctuator("(");
 
-    let mut args = Vec::new();
+    let mut params = Vec::new();
 
     if stream.consume_punctuator(")").is_some() {
-        return (func_token, func_name, args);
+        return (func_token, func_name, params);
     }
 
     loop {
         stream.expect_keyword("int");
         let ctype = CType::Int;
 
-        let (arg_token, arg_name) = stream.expect_identifier();
+        let (param_token, param_name) = stream.expect_identifier();
 
-        add_info
-            .current_fn_mut()
-            .unwrap()
-            .add_lvar(&arg_name, ctype, &arg_token);
-
-        let lvar = add_info.current_fn().unwrap().find_lvar(&arg_name).unwrap();
-        args.push(lvar.offset);
+        params.push(Parameter::new(param_token, param_name, ctype));
 
         if stream.consume_punctuator(",").is_none() {
             break;
@@ -224,7 +468,27 @@ fn function_declarator(
 
     stream.expect_punctuator(")");
 
-    (func_token, func_name, args)
+    (func_token, func_name, params)
+}
+
+// global_declaration := "int" (declarator ("," declarator)*)? ";"
+fn global_declaration(stream: &mut TokenStream, ctx: &mut ParseContext) {
+    stream.expect_keyword("int");
+    let base = CType::Int;
+
+    if stream.consume_punctuator(";").is_some() {
+        return;
+    }
+
+    loop {
+        let _ = declarator(stream, ctx, &base);
+
+        if stream.consume_punctuator(",").is_none() {
+            break;
+        }
+    }
+
+    stream.expect_punctuator(";");
 }
 
 // stmt := "return" expr ";"
@@ -233,22 +497,22 @@ fn function_declarator(
 //       | "for" "(" expr_stmt expr? ";" expr? ")" stmt
 //       | "while" "(" expr ")" stmt
 //       | expr_stmt ";"
-fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+fn stmt(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     if let Some(token) = stream.consume_keyword("return") {
-        let node = expr(stream, add_info);
+        let node = expr(stream, ctx);
         stream.expect_punctuator(";");
         Node::new(token, NodeKind::Return(Box::new(node)))
     } else if stream.consume_punctuator("{").is_some() {
-        compound_stmt(stream, add_info)
+        compound_stmt(stream, ctx)
     } else if let Some(token) = stream.consume_keyword("if") {
         stream.expect_punctuator("(");
-        let cond_node = Box::new(expr(stream, add_info));
+        let cond_node = Box::new(expr(stream, ctx));
         stream.expect_punctuator(")");
 
-        let then_node = Box::new(stmt(stream, add_info));
+        let then_node = Box::new(stmt(stream, ctx));
 
         let else_node = if stream.consume_keyword("else").is_some() {
-            Box::new(stmt(stream, add_info))
+            Box::new(stmt(stream, ctx))
         } else {
             // 紐付けるトークンがないのでif自体と紐付ける
             Box::new(Node::null_statement(Rc::clone(&token)))
@@ -258,13 +522,13 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     } else if let Some(token) = stream.consume_keyword("for") {
         stream.expect_punctuator("(");
 
-        let init_node = Box::new(expr_stmt(stream, add_info));
+        let init_node = Box::new(expr_stmt(stream, ctx));
 
         let cond_node = if let Some(token) = stream.consume_punctuator(";") {
             // 終了条件が無い場合は非0の値に置き換える
             Box::new(Node::new(token, NodeKind::Num(1)))
         } else {
-            let node = Box::new(expr(stream, add_info));
+            let node = Box::new(expr(stream, ctx));
             stream.expect_punctuator(";");
             node
         };
@@ -272,12 +536,12 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
         let update_node = if let Some(token) = stream.consume_punctuator(")") {
             Box::new(Node::null_statement(token))
         } else {
-            let node = Box::new(expr(stream, add_info));
+            let node = Box::new(expr(stream, ctx));
             stream.expect_punctuator(")");
             node
         };
 
-        let body_node = Box::new(stmt(stream, add_info));
+        let body_node = Box::new(stmt(stream, ctx));
 
         Node::new(
             token,
@@ -290,11 +554,11 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 
         stream.expect_punctuator("(");
 
-        let cond_node = Box::new(expr(stream, add_info));
+        let cond_node = Box::new(expr(stream, ctx));
 
         stream.expect_punctuator(")");
 
-        let body_node = Box::new(stmt(stream, add_info));
+        let body_node = Box::new(stmt(stream, ctx));
 
         // initとupdateが空のfor文として生成する
         Node::new(
@@ -302,33 +566,42 @@ fn stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
             NodeKind::For(init_node, cond_node, update_node, body_node),
         )
     } else {
-        expr_stmt(stream, add_info)
+        expr_stmt(stream, ctx)
     }
 }
 
 // compound_stmt := (declaration | stmt)* "}"
-fn compound_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+fn compound_stmt(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     let mut nodes = Vec::new();
+
+    if ctx.enter_scope().is_err() {
+        unreachable!();
+    }
+
     let mut token = stream.consume_punctuator("}");
 
     while token.is_none() {
-        if let Some(init_nodes) = declaration(stream, add_info) {
+        if let Some(init_nodes) = declaration(stream, ctx) {
             nodes.extend(init_nodes);
         } else {
-            nodes.push(stmt(stream, add_info));
+            nodes.push(stmt(stream, ctx));
         }
 
         token = stream.consume_punctuator("}");
+    }
+
+    if ctx.exit_scope().is_err() {
+        unreachable!();
     }
 
     Node::new(token.unwrap(), NodeKind::Block(nodes))
 }
 
 // declaration := "int" init_declarator
-fn declaration(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Option<Vec<Node>> {
+fn declaration(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<Vec<Node>> {
     if stream.consume_keyword("int").is_some() {
         let ctype = CType::Int;
-        let init_nodes = init_declarator(stream, add_info, &ctype);
+        let init_nodes = init_declarator(stream, ctx, &ctype);
         Some(init_nodes)
     } else {
         None
@@ -336,11 +609,7 @@ fn declaration(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Optio
 }
 
 // init_declarator := (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
-fn init_declarator(
-    stream: &mut TokenStream,
-    add_info: &mut AdditionalInfo,
-    base: &CType,
-) -> Vec<Node> {
+fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CType) -> Vec<Node> {
     let mut init_nodes = Vec::new();
 
     if stream.consume_punctuator(";").is_some() {
@@ -348,11 +617,11 @@ fn init_declarator(
     }
 
     loop {
-        let (ident_name, ident_token) = declarator(stream, add_info, base);
+        let (ident_name, ident_token) = declarator(stream, ctx, base);
 
         if let Some(assign_token) = stream.consume_punctuator("=") {
-            let lhs = Box::new(Node::lvar(ident_name, ident_token, add_info));
-            let rhs = Box::new(expr(stream, add_info));
+            let lhs = Box::new(Node::var(&ident_name, ident_token, ctx));
+            let rhs = Box::new(expr(stream, ctx));
             let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
             init_nodes.push(init_node);
         }
@@ -370,7 +639,7 @@ fn init_declarator(
 // declarator := "*"* ident ("[" num "]")*
 fn declarator(
     stream: &mut TokenStream,
-    add_info: &mut AdditionalInfo,
+    ctx: &mut ParseContext,
     base: &CType,
 ) -> (String, Rc<Token>) {
     let mut ctype = base.clone();
@@ -396,36 +665,36 @@ fn declarator(
         ctype = CType::Array(Box::new(ctype), n);
     }
 
-    add_info
-        .current_fn_mut()
-        .expect("関数定義外での宣言です")
-        .add_lvar(&name, ctype, &token);
+    if let Err(msg) = ctx.add_var(&name, ctype) {
+        error_tok!(&token, "{}", msg);
+    }
+
     (name, token)
 }
 
 // expr_stmt := expr? ";"
-fn expr_stmt(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+fn expr_stmt(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     if let Some(token) = stream.consume_punctuator(";") {
         Node::null_statement(token)
     } else {
-        let node = expr(stream, add_info);
+        let node = expr(stream, ctx);
         stream.expect_punctuator(";");
         node
     }
 }
 
 // expr := assign
-fn expr(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    assign(stream, add_info)
+fn expr(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    assign(stream, ctx)
 }
 
 // assign := equality ("=" assign)?
-fn assign(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    let mut node = equality(stream, add_info);
+fn assign(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    let mut node = equality(stream, ctx);
 
     if let Some(token) = stream.consume_punctuator("=") {
         let lhs = Box::new(node);
-        let rhs = Box::new(assign(stream, add_info));
+        let rhs = Box::new(assign(stream, ctx));
         node = Node::new(token, NodeKind::Assign(lhs, rhs));
     }
 
@@ -433,17 +702,17 @@ fn assign(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 }
 
 // equality := relational ("==" relational | "!=" relational)*
-fn equality(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    let mut node = relational(stream, add_info);
+fn equality(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    let mut node = relational(stream, ctx);
 
     loop {
         if let Some(token) = stream.consume_punctuator("==") {
             let lhs = Box::new(node);
-            let rhs = Box::new(relational(stream, add_info));
+            let rhs = Box::new(relational(stream, ctx));
             node = Node::new(token, NodeKind::Eq(lhs, rhs));
         } else if let Some(token) = stream.consume_punctuator("!=") {
             let lhs = Box::new(node);
-            let rhs = Box::new(relational(stream, add_info));
+            let rhs = Box::new(relational(stream, ctx));
             node = Node::new(token, NodeKind::Neq(lhs, rhs));
         } else {
             return node;
@@ -452,26 +721,26 @@ fn equality(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 }
 
 // relational := add ("<" add | "<=" add | ">" add | ">=" add)*
-fn relational(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    let mut node = add(stream, add_info);
+fn relational(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    let mut node = add(stream, ctx);
 
     loop {
         if let Some(token) = stream.consume_punctuator("<") {
             let lhs = Box::new(node);
-            let rhs = Box::new(add(stream, add_info));
+            let rhs = Box::new(add(stream, ctx));
             node = Node::new(token, NodeKind::LT(lhs, rhs));
         } else if let Some(token) = stream.consume_punctuator("<=") {
             let lhs = Box::new(node);
-            let rhs = Box::new(add(stream, add_info));
+            let rhs = Box::new(add(stream, ctx));
             node = Node::new(token, NodeKind::LTE(lhs, rhs));
         } else if let Some(token) = stream.consume_punctuator(">") {
             let lhs = Box::new(node);
-            let rhs = Box::new(add(stream, add_info));
+            let rhs = Box::new(add(stream, ctx));
             // LTの左右のオペランドを入れ替えてGTにする
             node = Node::new(token, NodeKind::LT(rhs, lhs));
         } else if let Some(token) = stream.consume_punctuator(">=") {
             let lhs = Box::new(node);
-            let rhs = Box::new(add(stream, add_info));
+            let rhs = Box::new(add(stream, ctx));
             // LTEの左右のオペランドを入れ替えてGTEにする
             node = Node::new(token, NodeKind::LTE(rhs, lhs));
         } else {
@@ -481,17 +750,17 @@ fn relational(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 }
 
 // expr := mul ("+" mul | "-" mul)*
-fn add(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    let mut node = mul(stream, add_info);
+fn add(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    let mut node = mul(stream, ctx);
 
     loop {
         if let Some(token) = stream.consume_punctuator("+") {
             let lhs = Box::new(node);
-            let rhs = Box::new(mul(stream, add_info));
+            let rhs = Box::new(mul(stream, ctx));
             node = Node::new(token, NodeKind::Add(lhs, rhs));
         } else if let Some(token) = stream.consume_punctuator("-") {
             let lhs = Box::new(node);
-            let rhs = Box::new(mul(stream, add_info));
+            let rhs = Box::new(mul(stream, ctx));
             node = Node::new(token, NodeKind::Sub(lhs, rhs));
         } else {
             return node;
@@ -500,17 +769,17 @@ fn add(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 }
 
 // mul := unary ("*" unary | "/" unary)*
-fn mul(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    let mut node = unary(stream, add_info);
+fn mul(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    let mut node = unary(stream, ctx);
 
     loop {
         if let Some(token) = stream.consume_punctuator("*") {
             let lhs = Box::new(node);
-            let rhs = Box::new(unary(stream, add_info));
+            let rhs = Box::new(unary(stream, ctx));
             node = Node::new(token, NodeKind::Mul(lhs, rhs));
         } else if let Some(token) = stream.consume_punctuator("/") {
             let lhs = Box::new(node);
-            let rhs = Box::new(unary(stream, add_info));
+            let rhs = Box::new(unary(stream, ctx));
             node = Node::new(token, NodeKind::Div(lhs, rhs));
         } else {
             return node;
@@ -519,30 +788,30 @@ fn mul(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 }
 
 // unary := (("+" | "-" | "&" | "*")? unary) | postfix
-fn unary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+fn unary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     if stream.consume_punctuator("+").is_some() {
-        unary(stream, add_info)
+        unary(stream, ctx)
     } else if let Some(token) = stream.consume_punctuator("-") {
         let lhs = Box::new(Node::new(Rc::clone(&token), NodeKind::Num(0)));
-        let rhs = Box::new(unary(stream, add_info));
+        let rhs = Box::new(unary(stream, ctx));
         Node::new(token, NodeKind::Sub(lhs, rhs))
     } else if let Some(token) = stream.consume_punctuator("&") {
-        let operand = Box::new(unary(stream, add_info));
+        let operand = Box::new(unary(stream, ctx));
         Node::new(token, NodeKind::Addr(operand))
     } else if let Some(token) = stream.consume_punctuator("*") {
-        let operand = Box::new(unary(stream, add_info));
+        let operand = Box::new(unary(stream, ctx));
         Node::new(token, NodeKind::Deref(operand))
     } else {
-        postfix(stream, add_info)
+        postfix(stream, ctx)
     }
 }
 
 // postfix := primary ("[" expr "]")*
-fn postfix(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
-    let mut node = primary(stream, add_info);
+fn postfix(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
+    let mut node = primary(stream, ctx);
 
     while let Some(bracket_token) = stream.consume_punctuator("[") {
-        let index = Box::new(expr(stream, add_info));
+        let index = Box::new(expr(stream, ctx));
 
         node = Node::new(
             Rc::clone(&bracket_token),
@@ -557,9 +826,9 @@ fn postfix(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
 }
 
 // primary := "(" expr ")" | num | ident call_args?
-fn primary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
+fn primary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     if stream.consume_punctuator("(").is_some() {
-        let node = expr(stream, add_info);
+        let node = expr(stream, ctx);
         stream.expect_punctuator(")");
         node
     } else if let Some((token, n)) = stream.consume_number() {
@@ -567,7 +836,7 @@ fn primary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
     } else {
         let (token, name) = stream.expect_identifier();
 
-        if let Some(args) = call_args(stream, add_info) {
+        if let Some(args) = call_args(stream, ctx) {
             // 関数呼び出し
             if args.len() > 6 {
                 error_tok!(token, "引数が6つを超える関数呼び出しはサポートしていません");
@@ -575,13 +844,13 @@ fn primary(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Node {
             Node::new(token, NodeKind::Call(name, args))
         } else {
             // 変数
-            Node::lvar(name, token, add_info)
+            Node::var(&name, token, ctx)
         }
     }
 }
 
 // call_args := "(" (expr ("," expr)*)? ")"
-fn call_args(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Option<Vec<Node>> {
+fn call_args(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<Vec<Node>> {
     if stream.consume_punctuator("(").is_some() {
         let mut args = Vec::new();
 
@@ -590,7 +859,7 @@ fn call_args(stream: &mut TokenStream, add_info: &mut AdditionalInfo) -> Option<
         }
 
         loop {
-            let arg = expr(stream, add_info);
+            let arg = expr(stream, ctx);
             args.push(arg);
             if stream.consume_punctuator(",").is_none() {
                 break;

@@ -14,7 +14,7 @@ pub enum CType {
 }
 
 impl CType {
-    pub fn new(token: &Rc<Token>, kind: &mut NodeKind) -> Result<Self, String> {
+    pub fn new(token: &Rc<Token>, kind: &mut NodeKind) -> Result<Self, &'static str> {
         // kindの種別によってはkindを置き換える必要があるが
         // matchの中で置き換えようとするとkindの再借用となり
         // コンパイルできない。よって、kindを置き換える場合のみ
@@ -23,7 +23,7 @@ impl CType {
             return Ok(ctype);
         }
 
-        let invalid_operand = "無効なオペランドです".to_string();
+        let invalid_operand = "無効なオペランドです";
 
         match kind {
             NodeKind::Defun(..)
@@ -70,7 +70,7 @@ impl CType {
                 _ => Err(invalid_operand),
             },
             NodeKind::Addr(operand) => match &operand.kind {
-                NodeKind::LVar(..) | NodeKind::Deref(..) => {
+                NodeKind::LVar(..) | NodeKind::GVar(..) | NodeKind::Deref(..) => {
                     let base = Box::new(operand.ctype.clone());
                     Ok(Self::Pointer(base))
                 }
@@ -81,7 +81,7 @@ impl CType {
                 _ => Err(invalid_operand),
             },
             NodeKind::Num(..) => Ok(Self::Int),
-            NodeKind::LVar(_, ctype, _) => Ok(ctype.clone()),
+            NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => Ok(ctype.clone()),
             NodeKind::Call(..) => Ok(Self::Int),
         }
     }

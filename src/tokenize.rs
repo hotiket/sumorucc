@@ -58,6 +58,14 @@ impl<'vec> TokenStream<'vec> {
         }
     }
 
+    pub fn save(&self) -> usize {
+        self.current
+    }
+
+    pub fn restore(&mut self, pos: usize) {
+        self.current = pos;
+    }
+
     pub fn pos(&self) -> usize {
         if let Some(token) = self.peek() {
             token.common.pos

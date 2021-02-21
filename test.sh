@@ -139,4 +139,14 @@ assert 3 "int main(){int x[2][2], *p=&x[0][0]; x[0][0]=1; x[0][1]=2; x[1][0]=3; 
 assert 4 "int main(){int x[2][2], *p=&x[0][0]; x[0][0]=1; x[0][1]=2; x[1][0]=3; x[1][1]=4; return p[3];}"
 assert 11 "int main(){int x[2][3][4]; x[1][2][3] = 11; int a=2; return (a+1)[a[(x[1][2][3]-10)[x]]];}"
 
+assert 3 "int; int main(){return 3;}"
+assert 2 "int g1; int f1(){g1=200; return g1;} int g2; int f2(){g2=100; return f1()-g2;} int main(){g1=g2=0; g1=f2()-50; return g2/g1;}"
+assert 10 "int g; int main(){int *x=&g; g=7; *x=g+3;; return g;}"
+assert 3 "int *g; int main(){int x=100; g=&x; *g=3; return x;}"
+assert 21 "int x, y; int main(){x=3; y=7; return x*y;}"
+assert 18 "int x; int y; int main(){x=7; y=11; return x+y;}"
+assert 0 "int g[3][4]; int init(){int i,j; for(i=0;i<3;i=i+1)for(j=0;j<4;j=j+1)g[i][j]=i*10+j; return 0;} int main(){init(); return g[0][0];}"
+assert 13 "int g[3][4]; int init(){int i,j; for(i=0;i<3;i=i+1)for(j=0;j<4;j=j+1)g[i][j]=i*10+j; return 0;} int main(){init(); return g[1][3];}"
+assert 22 "int g[3][4]; int init(){int i,j; for(i=0;i<3;i=i+1)for(j=0;j<4;j=j+1)g[i][j]=i*10+j; return 0;} int main(){init(); return g[2][2];}"
+
 echo OK
