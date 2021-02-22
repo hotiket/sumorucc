@@ -1,6 +1,7 @@
 use std::fmt;
 
-use super::parse::{GVar, Node, NodeKind, ParseContext};
+use super::node::{Node, NodeKind};
+use super::parse_context::{GVar, ParseContext};
 
 struct Context {
     fname: String,

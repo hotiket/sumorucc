@@ -2,7 +2,7 @@ use std::fmt;
 use std::mem::{replace, swap};
 use std::rc::Rc;
 
-use super::parse::{Node, NodeKind};
+use super::node::{Node, NodeKind};
 use super::tokenize::Token;
 
 #[derive(Clone, PartialEq)]
