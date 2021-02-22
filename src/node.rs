@@ -65,4 +65,31 @@ impl Node {
 
         Self::new(token, var_kind.unwrap())
     }
+
+    pub fn to_isize(&self) -> Option<isize> {
+        match &self.kind {
+            NodeKind::Eq(l, r) => Self::bi_op(l, r, |l, r| if l == r { 1 } else { 0 }),
+            NodeKind::Neq(l, r) => Self::bi_op(l, r, |l, r| if l != r { 1 } else { 0 }),
+            NodeKind::LT(l, r) => Self::bi_op(l, r, |l, r| if l < r { 1 } else { 0 }),
+            NodeKind::LTE(l, r) => Self::bi_op(l, r, |l, r| if l <= r { 1 } else { 0 }),
+            NodeKind::Add(l, r) => Self::bi_op(l, r, |l, r| l + r),
+            NodeKind::Sub(l, r) => Self::bi_op(l, r, |l, r| l - r),
+            NodeKind::Mul(l, r) => Self::bi_op(l, r, |l, r| l * r),
+            NodeKind::Div(l, r) => Self::bi_op(l, r, |l, r| l / r),
+            NodeKind::Num(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    fn bi_op<F>(lhs: &Self, rhs: &Self, bi_fn: F) -> Option<isize>
+    where
+        F: Fn(isize, isize) -> isize,
+    {
+        let lhs = lhs.to_isize();
+        let rhs = rhs.to_isize();
+        match (lhs, rhs) {
+            (Some(lhs), Some(rhs)) => Some(bi_fn(lhs, rhs)),
+            _ => None,
+        }
+    }
 }

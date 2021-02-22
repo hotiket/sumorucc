@@ -142,6 +142,7 @@ impl<'vec> TokenStream<'vec> {
 
     // 次のトークンが数値の場合、そのトークンと数値を返し、トークンを
     // 1つ読み進める。それ以外の場合にはエラーを報告する。
+    #[allow(dead_code)]
     pub fn expect_number(&mut self) -> (Rc<Token>, isize) {
         let token_num = self.consume_number();
 

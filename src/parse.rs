@@ -304,7 +304,7 @@ fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CTyp
     init_nodes
 }
 
-// declarator := "*"* ident ("[" num "]")*
+// declarator := "*"* ident ("[" expr "]")*
 fn declarator(
     stream: &mut TokenStream,
     ctx: &mut ParseContext,
@@ -319,11 +319,17 @@ fn declarator(
 
     let mut array_sizes = Vec::new();
     while stream.consume_punctuator("[").is_some() {
-        let (token, n) = stream.expect_number();
-        if n <= 0 {
-            error_tok!(token, "要素数が0以下の配列は定義できません");
+        let n_node = expr(stream, ctx);
+
+        if let Some(n) = n_node.to_isize() {
+            if n <= 0 {
+                error_tok!(n_node.token, "要素数が0以下の配列は定義できません");
+            }
+            array_sizes.push(n as usize);
+        } else {
+            error_tok!(n_node.token, "要素数が定数式ではありません");
         }
-        array_sizes.push(n as usize);
+
         stream.expect_punctuator("]");
     }
 

@@ -165,4 +165,8 @@ assert 16 "int main(){int x[4][2]; return sizeof x[2];}"
 assert 65 "int g[2][4]; int main(){return sizeof g+1;}"
 assert 2 "int main(){int x=2; sizeof(x=1); return x;}"
 
+assert 40 "int main(){int a[1+1][5*(4/(1+2))]; return sizeof a[1];}"
+assert 48 "int g[(1==1) + (10!=-10) + (2<4) + (1<=5) + (0>-1) + (-2>=-7)]; int main(){return sizeof g;}"
+assert 8 "int g[1 + (0==1) + (10!=10) + (4<2) + (5<=1) + (-1>0) + (-7>=-2)]; int main(){return sizeof g;}"
+
 echo OK
