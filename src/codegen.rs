@@ -1,5 +1,6 @@
 use std::fmt;
 
+use super::ctype::CType;
 use super::node::{Node, NodeKind};
 use super::parse_context::{GVar, ParseContext};
 
@@ -249,7 +250,42 @@ fn gen_gvar(gvar: &GVar) {
     println!("        .data");
     println!("        .globl {}", gvar.name);
     println!("{}:", gvar.name);
-    println!("        .zero {}", gvar.ctype.size());
+
+    if let Some(val) = &gvar.val {
+        match &gvar.ctype {
+            CType::Int | CType::Pointer(..) => {
+                let size = ctype_to_data_directive(&gvar.ctype);
+                let val = val.first().unwrap();
+                gen_init_val(val, size);
+            }
+            CType::Array(..) => {
+                let base = gvar.ctype.array_base().unwrap();
+                let size = ctype_to_data_directive(&base);
+
+                for val in val.iter() {
+                    gen_init_val(val, size);
+                }
+            }
+            _ => unreachable!(),
+        }
+    } else {
+        println!("        .zero {}", gvar.ctype.size());
+    }
+}
+
+fn gen_init_val(val: &Node, size: &str) {
+    let n = val.to_isize();
+    if n.is_none() {
+        error_tok!(val.token, "初期値が定数式ではありません");
+    }
+    println!("        {} {}", size, n.unwrap());
+}
+
+fn ctype_to_data_directive(ctype: &CType) -> &str {
+    match ctype.size() {
+        8 => ".quad",
+        _ => unreachable!(),
+    }
 }
 
 fn function_header(name: &str, ctx: &mut Context) {

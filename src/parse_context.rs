@@ -1,5 +1,5 @@
 use super::ctype::CType;
-use super::node::NodeKind;
+use super::node::{Node, NodeKind};
 
 pub struct LVar {
     // 変数の名前
@@ -15,6 +15,8 @@ pub struct GVar {
     pub name: String,
     // 変数の型
     pub ctype: CType,
+    // 初期値
+    pub val: Option<Vec<Node>>,
 }
 
 struct Scope {
@@ -218,6 +220,7 @@ impl ParseContext {
             self.gvars.push(GVar {
                 name: name.to_string(),
                 ctype,
+                val: None,
             });
             Ok(())
         }
@@ -241,6 +244,15 @@ impl ParseContext {
             .iter()
             .find(|v| v.name == name)
             .map(|v| NodeKind::GVar(v.name.clone(), v.ctype.clone()))
+    }
+
+    pub fn set_val(&mut self, name: &str, val: Vec<Node>) -> Result<(), &str> {
+        if let Some(gvar) = self.gvars.iter_mut().find(|v| v.name == name) {
+            gvar.val = Some(val);
+            Ok(())
+        } else {
+            Err("変数定義がされていません")
+        }
     }
 
     pub fn enter_scope(&mut self) -> Result<(), &str> {

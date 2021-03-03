@@ -17,7 +17,7 @@ pub fn parse(token: &[Rc<Token>]) -> (Vec<Node>, ParseContext) {
     (nodes, ctx)
 }
 
-// program := (function_definition | global_declaration)*
+// program := (function_definition | declaration)*
 fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
     let mut nodes = Vec::new();
 
@@ -25,7 +25,7 @@ fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
         if is_function(stream) {
             nodes.push(function_definition(stream, ctx));
         } else {
-            global_declaration(stream, ctx);
+            declaration(stream, ctx);
         }
     }
 
@@ -137,26 +137,6 @@ fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Para
     stream.expect_punctuator(")");
 
     (func_token, func_name, params)
-}
-
-// global_declaration := "int" (declarator ("," declarator)*)? ";"
-fn global_declaration(stream: &mut TokenStream, ctx: &mut ParseContext) {
-    stream.expect_keyword("int");
-    let base = CType::Int;
-
-    if stream.consume_punctuator(";").is_some() {
-        return;
-    }
-
-    loop {
-        let _ = declarator(stream, ctx, &base);
-
-        if stream.consume_punctuator(",").is_none() {
-            break;
-        }
-    }
-
-    stream.expect_punctuator(";");
 }
 
 // stmt := "return" expr ";"
@@ -302,54 +282,21 @@ fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CTyp
                 stream.restore(state);
             }
 
-            let mut initializer_nodes = initializer(stream, ctx, &ctype, &ident_token);
+            let initializer_nodes = initializer(stream, ctx, &ctype, &ident_token);
 
-            // 初期値を代入するコードを生成する
-            match &ctype {
-                CType::Int | CType::Pointer(_) => {
-                    let lhs = Box::new(Node::var(&ident_name, ident_token, ctx));
-                    let rhs = Box::new(initializer_nodes.pop().unwrap());
-                    let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
-                    init_nodes.push(init_node);
+            match var_kind {
+                NodeKind::LVar(..) => {
+                    let new_init_nodes = set_init_val_to_lvar(
+                        &ident_name,
+                        ident_token,
+                        ctype,
+                        initializer_nodes,
+                        assign_token,
+                        ctx,
+                    );
+                    init_nodes.extend(new_init_nodes);
                 }
-
-                // int x[2][2] = {1, 2, 3, 4}の場合
-                //   ((int*)&x)[0] = 1;
-                //   ((int*)&x)[1] = 2;
-                //   ((int*)&x)[2] = 3;
-                //   ((int*)&x)[3] = 4;
-                // のようなコードを生成する。
-                CType::Array(..) => {
-                    // 配列先頭を指すポインタを用意する
-                    let var_node = Node::var(&ident_name, Rc::clone(&ident_token), ctx);
-                    let mut ptr_node =
-                        Node::new(Rc::clone(&ident_token), NodeKind::Addr(Box::new(var_node)));
-                    let base = ctype.array_base().unwrap();
-                    let base_ptr = CType::Pointer(Box::new(base.clone()));
-                    ptr_node.cast(base_ptr);
-
-                    // 配列先頭から順に各初期値を代入する
-                    for (i, initializer_node) in initializer_nodes.into_iter().enumerate() {
-                        // lhs = *(p + i)
-                        let index = Box::new(Node::new(
-                            Rc::clone(&ident_token),
-                            NodeKind::Num(i as isize),
-                        ));
-                        let p = Box::new(ptr_node.clone());
-                        let lhs_addr =
-                            Box::new(Node::new(Rc::clone(&ident_token), NodeKind::Add(p, index)));
-                        let lhs = Box::new(Node::new(
-                            Rc::clone(&ident_token),
-                            NodeKind::Deref(lhs_addr),
-                        ));
-
-                        let rhs = Box::new(initializer_node);
-
-                        let init_node =
-                            Node::new(Rc::clone(&assign_token), NodeKind::Assign(lhs, rhs));
-                        init_nodes.push(init_node);
-                    }
-                }
+                NodeKind::GVar(..) => set_init_val_to_gvar(&ident_name, initializer_nodes, ctx),
                 _ => unreachable!(),
             }
         }
@@ -451,6 +398,72 @@ fn initializer(
     }
 
     nodes
+}
+
+fn set_init_val_to_lvar(
+    ident_name: &str,
+    ident_token: Rc<Token>,
+    ctype: CType,
+    mut initializer_nodes: Vec<Node>,
+    assign_token: Rc<Token>,
+    ctx: &mut ParseContext,
+) -> Vec<Node> {
+    let mut init_nodes = Vec::new();
+
+    match &ctype {
+        CType::Int | CType::Pointer(_) => {
+            let lhs = Box::new(Node::var(ident_name, ident_token, ctx));
+            let rhs = Box::new(initializer_nodes.pop().unwrap());
+            let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
+            init_nodes.push(init_node);
+        }
+
+        // int x[2][2] = {1, 2, 3, 4}の場合
+        //   ((int*)&x)[0] = 1;
+        //   ((int*)&x)[1] = 2;
+        //   ((int*)&x)[2] = 3;
+        //   ((int*)&x)[3] = 4;
+        // のようなコードを生成する。
+        CType::Array(..) => {
+            // 配列先頭を指すポインタを用意する
+            let var_node = Node::var(ident_name, Rc::clone(&ident_token), ctx);
+            let mut ptr_node =
+                Node::new(Rc::clone(&ident_token), NodeKind::Addr(Box::new(var_node)));
+            let base = ctype.array_base().unwrap();
+            let base_ptr = CType::Pointer(Box::new(base.clone()));
+            ptr_node.cast(base_ptr);
+
+            // 配列先頭から順に各初期値を代入する
+            for (i, initializer_node) in initializer_nodes.into_iter().enumerate() {
+                // lhs = *(p + i)
+                let index = Box::new(Node::new(
+                    Rc::clone(&ident_token),
+                    NodeKind::Num(i as isize),
+                ));
+                let p = Box::new(ptr_node.clone());
+                let lhs_addr =
+                    Box::new(Node::new(Rc::clone(&ident_token), NodeKind::Add(p, index)));
+                let lhs = Box::new(Node::new(
+                    Rc::clone(&ident_token),
+                    NodeKind::Deref(lhs_addr),
+                ));
+
+                let rhs = Box::new(initializer_node);
+
+                let init_node = Node::new(Rc::clone(&assign_token), NodeKind::Assign(lhs, rhs));
+                init_nodes.push(init_node);
+            }
+        }
+        _ => unreachable!(),
+    }
+
+    init_nodes
+}
+
+fn set_init_val_to_gvar(ident_name: &str, initializer_nodes: Vec<Node>, ctx: &mut ParseContext) {
+    if ctx.set_val(&ident_name, initializer_nodes).is_err() {
+        unreachable!();
+    }
 }
 
 // expr_stmt := expr? ";"
