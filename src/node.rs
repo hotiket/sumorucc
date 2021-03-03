@@ -4,6 +4,7 @@ use super::ctype::CType;
 use super::parse_context::ParseContext;
 use super::tokenize::Token;
 
+#[derive(Clone)]
 pub enum NodeKind {
     // name, params(offset), body
     Defun(String, Vec<usize>, Box<Node>),
@@ -33,6 +34,7 @@ pub enum NodeKind {
     Call(String, Vec<Node>),
 }
 
+#[derive(Clone)]
 pub struct Node {
     pub token: Rc<Token>,
     pub kind: NodeKind,
@@ -91,6 +93,10 @@ impl Node {
             (Some(lhs), Some(rhs)) => Some(bi_fn(lhs, rhs)),
             _ => None,
         }
+    }
+
+    pub fn cast(&mut self, ctype: CType) {
+        self.ctype = ctype;
     }
 
     #[allow(dead_code)]

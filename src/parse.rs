@@ -276,7 +276,7 @@ fn declaration(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<Vec<N
     }
 }
 
-// init_declarator := (declarator ("=" expr)? ("," declarator ("=" expr)?)*)? ";"
+// init_declarator := (declarator ("=" initializer)? ("," declarator ("=" initializer)?)*)? ";"
 fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CType) -> Vec<Node> {
     let mut init_nodes = Vec::new();
 
@@ -288,10 +288,70 @@ fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CTyp
         let (ident_name, ident_token) = declarator(stream, ctx, base);
 
         if let Some(assign_token) = stream.consume_punctuator("=") {
-            let lhs = Box::new(Node::var(&ident_name, ident_token, ctx));
-            let rhs = Box::new(expr(stream, ctx));
-            let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
-            init_nodes.push(init_node);
+            // 変数定義してるのでunwrapして問題ない
+            let var_kind = ctx.find_var(&ident_name).unwrap();
+            let ctype = match &var_kind {
+                NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => ctype.clone(),
+                _ => unreachable!(),
+            };
+
+            // 配列だったらinitializerが"{"で始まるかチェックする
+            if matches!(&ctype, CType::Array(..)) {
+                let state = stream.save();
+                stream.expect_punctuator("{");
+                stream.restore(state);
+            }
+
+            let mut initializer_nodes = initializer(stream, ctx, &ctype, &ident_token);
+
+            // 初期値を代入するコードを生成する
+            match &ctype {
+                CType::Int | CType::Pointer(_) => {
+                    let lhs = Box::new(Node::var(&ident_name, ident_token, ctx));
+                    let rhs = Box::new(initializer_nodes.pop().unwrap());
+                    let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));
+                    init_nodes.push(init_node);
+                }
+
+                // int x[2][2] = {1, 2, 3, 4}の場合
+                //   ((int*)&x)[0] = 1;
+                //   ((int*)&x)[1] = 2;
+                //   ((int*)&x)[2] = 3;
+                //   ((int*)&x)[3] = 4;
+                // のようなコードを生成する。
+                CType::Array(..) => {
+                    // 配列先頭を指すポインタを用意する
+                    let var_node = Node::var(&ident_name, Rc::clone(&ident_token), ctx);
+                    let mut ptr_node =
+                        Node::new(Rc::clone(&ident_token), NodeKind::Addr(Box::new(var_node)));
+                    let base = ctype.array_base().unwrap();
+                    let base_ptr = CType::Pointer(Box::new(base.clone()));
+                    ptr_node.cast(base_ptr);
+
+                    // 配列先頭から順に各初期値を代入する
+                    for (i, initializer_node) in initializer_nodes.into_iter().enumerate() {
+                        // lhs = *(p + i)
+                        let index = Box::new(Node::new(
+                            Rc::clone(&ident_token),
+                            NodeKind::Num(i as isize),
+                        ));
+                        let p = Box::new(ptr_node.clone());
+                        let lhs_addr =
+                            Box::new(Node::new(Rc::clone(&ident_token), NodeKind::Add(p, index)));
+                        let lhs = Box::new(Node::new(
+                            Rc::clone(&ident_token),
+                            NodeKind::Deref(lhs_addr),
+                        ));
+
+                        let rhs = Box::new(initializer_node);
+
+                        let init_node =
+                            Node::new(Rc::clone(&assign_token), NodeKind::Assign(lhs, rhs));
+                        init_nodes.push(init_node);
+                    }
+                }
+                _ => unreachable!(),
+            }
         }
 
         if stream.consume_punctuator(",").is_none() {
@@ -344,6 +404,53 @@ fn declarator(
     }
 
     (name, token)
+}
+
+// initializer := expr | "{" initializer ("," initializer)* ","? "}"
+fn initializer(
+    stream: &mut TokenStream,
+    ctx: &mut ParseContext,
+    ctype: &CType,
+    dummy_token: &Rc<Token>,
+) -> Vec<Node> {
+    let mut nodes = Vec::new();
+
+    if stream.consume_punctuator("{").is_some() {
+        let base = if let CType::Array(base, _) = ctype {
+            *base.clone()
+        } else {
+            // intのような配列でない型でも括弧でくくることが
+            // 許されているので、配列でなければ自分自身をbaseとして返す。
+            ctype.clone()
+        };
+
+        nodes.extend(initializer(stream, ctx, &base, dummy_token));
+
+        let mut has_trailing_comma = false;
+        while stream.consume_punctuator(",").is_some() {
+            if stream.consume_punctuator("}").is_some() {
+                has_trailing_comma = true;
+                break;
+            }
+
+            nodes.extend(initializer(stream, ctx, &base, dummy_token));
+        }
+
+        if !has_trailing_comma {
+            stream.expect_punctuator("}");
+        }
+
+        // 余りを0で埋める、もしくははみ出た分を切り捨てる
+        let flat_len = ctype.flat_len();
+        if nodes.len() != flat_len {
+            let zero = Node::new(Rc::clone(dummy_token), NodeKind::Num(0));
+            nodes.resize(flat_len, zero);
+        }
+    } else {
+        nodes.push(expr(stream, ctx));
+    }
+
+    nodes
 }
 
 // expr_stmt := expr? ";"

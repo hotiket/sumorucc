@@ -144,6 +144,31 @@ impl CType {
         }
     }
 
+    // 一次元の配列で現した時の要素数を返す。
+    // 例えば、int[2][3]なら6, intなら1。
+    pub fn flat_len(&self) -> usize {
+        match self {
+            Self::Int => 1,
+            Self::Pointer(_) => 1,
+            Self::Array(base, size) => base.flat_len() * size,
+            Self::Statement => 0,
+        }
+    }
+
+    // Arrayのbaseを再帰的に辿り返す。
+    // 例えば、int[2][2]ならSome(int), (int*)[3]ならSome(int*)。
+    pub fn array_base(&self) -> Option<&Self> {
+        if !matches!(self, Self::Array(..)) {
+            return None;
+        }
+
+        let base = self.base().unwrap();
+        match base {
+            Self::Array(..) => base.array_base(),
+            _ => Some(base),
+        }
+    }
+
     fn base(&self) -> Option<&Self> {
         match self {
             Self::Array(base, _) => Some(&base),
