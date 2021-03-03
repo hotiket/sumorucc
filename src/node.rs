@@ -92,4 +92,140 @@ impl Node {
             _ => None,
         }
     }
+
+    #[allow(dead_code)]
+    pub fn debug_print(&self) {
+        self.debug_print_impl(0);
+    }
+
+    #[allow(dead_code)]
+    pub fn debug_print_impl(&self, depth: usize) {
+        let head = "  ".repeat(depth);
+        match &self.kind {
+            NodeKind::Defun(name, params, body) => {
+                eprint!("{}Defun({}", head, &name);
+                for param in params.iter() {
+                    eprint!("{}, ", param);
+                }
+                eprintln!(")");
+                body.debug_print_impl(depth + 1);
+            }
+            NodeKind::Block(nodes) => {
+                eprintln!("{}Block", head);
+                for node in nodes.iter() {
+                    node.debug_print_impl(depth + 1);
+                }
+            }
+            NodeKind::Return(node) => {
+                eprintln!("{}Return", head);
+                node.debug_print_impl(depth + 1);
+            }
+            NodeKind::If(cond, then, els) => {
+                eprintln!("{}If", head);
+                eprintln!("{}cond", head);
+                cond.debug_print_impl(depth + 1);
+                eprintln!("{}then", head);
+                then.debug_print_impl(depth + 1);
+                eprintln!("{}else", head);
+                els.debug_print_impl(depth + 1);
+            }
+            NodeKind::For(init, cond, update, body) => {
+                eprintln!("{}For", head);
+                eprintln!("{}init", head);
+                init.debug_print_impl(depth + 1);
+                eprintln!("{}cond", head);
+                cond.debug_print_impl(depth + 1);
+                eprintln!("{}update", head);
+                update.debug_print_impl(depth + 1);
+                eprintln!("{}body", head);
+                body.debug_print_impl(depth + 1);
+            }
+            NodeKind::Assign(lhs, rhs) => {
+                eprintln!("{}Assign", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Eq(lhs, rhs) => {
+                eprintln!("{}Eq", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Neq(lhs, rhs) => {
+                eprintln!("{}Neq", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::LT(lhs, rhs) => {
+                eprintln!("{}LT", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::LTE(lhs, rhs) => {
+                eprintln!("{}LTE", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Add(lhs, rhs) => {
+                eprintln!("{}Add", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Sub(lhs, rhs) => {
+                eprintln!("{}Sub", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Mul(lhs, rhs) => {
+                eprintln!("{}Mul", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Div(lhs, rhs) => {
+                eprintln!("{}Div", head);
+                eprintln!("{}lhs", head);
+                lhs.debug_print_impl(depth + 1);
+                eprintln!("{}rhs", head);
+                rhs.debug_print_impl(depth + 1);
+            }
+            NodeKind::Addr(node) => {
+                eprintln!("{}Addr", head);
+                node.debug_print_impl(depth + 1);
+            }
+            NodeKind::Deref(node) => {
+                eprintln!("{}Deref", head);
+                node.debug_print_impl(depth + 1);
+            }
+            NodeKind::Num(n) => {
+                eprintln!("{}Num({})", head, n);
+            }
+            NodeKind::LVar(name, ctype, offset) => {
+                eprintln!("{}LVar({}, {}, {})", head, &name, &ctype, &offset);
+            }
+            NodeKind::GVar(name, ctype) => {
+                eprintln!("{}GVar({}, {})", head, &name, &ctype);
+            }
+            NodeKind::Call(name, args) => {
+                eprintln!("{}Call({})", head, name);
+                for arg in args.iter() {
+                    arg.debug_print_impl(depth + 1);
+                }
+            }
+        }
+    }
 }
