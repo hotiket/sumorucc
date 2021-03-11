@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::ctype::CType;
+use super::ctype::{CType, Integer};
 use super::node::{Node, NodeKind};
 use super::parse_context::ParseContext;
 use super::tokenize::{Token, TokenStream};
@@ -24,22 +24,36 @@ fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
     while !stream.at_eof() {
         if is_function(stream) {
             nodes.push(function_definition(stream, ctx));
-        } else {
-            declaration(stream, ctx);
+        } else if declaration(stream, ctx).is_none() {
+            error_tok!(
+                stream.current().unwrap(),
+                "トップレベルでは関数定義かグローバル変数定義のみできます"
+            );
         }
     }
 
     nodes
 }
 
-// "int" "*"* ident "(" ならば真を返す
+// type_specifier := "int" | "char"
+fn type_specifier(stream: &mut TokenStream) -> Option<CType> {
+    if stream.consume_keyword("int").is_some() {
+        Some(CType::Integer(Integer::Int))
+    } else if stream.consume_keyword("char").is_some() {
+        Some(CType::Integer(Integer::Char))
+    } else {
+        None
+    }
+}
+
+// type_specifier "*"* ident "(" ならば真を返す
 // それ以外は偽を返す
 fn is_function(stream: &mut TokenStream) -> bool {
     let mut result = false;
 
     let state = stream.save();
 
-    if stream.consume_keyword("int").is_some() {
+    if type_specifier(stream).is_some() {
         while stream.consume_punctuator("*").is_some() {}
         if stream.consume_identifier().is_some() && stream.consume_punctuator("(").is_some() {
             result = true;
@@ -51,9 +65,12 @@ fn is_function(stream: &mut TokenStream) -> bool {
     result
 }
 
-// function_definition := "int" function_declarator "{" compound_stmt
+// function_definition := type_specifier function_declarator "{" compound_stmt
 fn function_definition(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
-    stream.expect_keyword("int");
+    let ctype = type_specifier(stream);
+    if ctype.is_none() {
+        error_tok!(stream.current().unwrap(), "型ではありません");
+    }
 
     let (token, name, params) = function_declarator(stream);
 
@@ -77,11 +94,11 @@ fn function_definition(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node
     for Parameter {
         token: _,
         name,
-        ctype: _,
+        ctype,
     } in params.into_iter()
     {
         if let Some(NodeKind::LVar(_, _, offset)) = ctx.find_lvar(&name) {
-            offsets.push(offset);
+            offsets.push((offset, ctype));
         } else {
             unreachable!();
         }
@@ -109,7 +126,7 @@ impl Parameter {
     }
 }
 
-// function_declarator := ident "(" ("int" ident ("," "int" ident)*)? ")"
+// function_declarator := ident "(" (type_specifier ident ("," type_specifier ident)*)? ")"
 fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Parameter>) {
     let (func_token, func_name) = stream.expect_identifier();
 
@@ -122,8 +139,11 @@ fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Para
     }
 
     loop {
-        stream.expect_keyword("int");
-        let ctype = CType::Int;
+        let ctype = type_specifier(stream);
+        if ctype.is_none() {
+            error_tok!(stream.current().unwrap(), "型ではありません");
+        }
+        let ctype = ctype.unwrap();
 
         let (param_token, param_name) = stream.expect_identifier();
 
@@ -245,10 +265,9 @@ fn compound_stmt(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     Node::new(token.unwrap(), NodeKind::Block(nodes))
 }
 
-// declaration := "int" init_declarator
+// declaration := type_specifier init_declarator
 fn declaration(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<Vec<Node>> {
-    if stream.consume_keyword("int").is_some() {
-        let ctype = CType::Int;
+    if let Some(ctype) = type_specifier(stream) {
         let init_nodes = init_declarator(stream, ctx, &ctype);
         Some(init_nodes)
     } else {
@@ -411,7 +430,7 @@ fn set_init_val_to_lvar(
     let mut init_nodes = Vec::new();
 
     match &ctype {
-        CType::Int | CType::Pointer(_) => {
+        CType::Integer(_) | CType::Pointer(_) => {
             let lhs = Box::new(Node::var(ident_name, ident_token, ctx));
             let rhs = Box::new(initializer_nodes.pop().unwrap());
             let init_node = Node::new(assign_token, NodeKind::Assign(lhs, rhs));

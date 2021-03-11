@@ -6,8 +6,14 @@ use super::node::{Node, NodeKind};
 use super::tokenize::Token;
 
 #[derive(Clone, PartialEq)]
-pub enum CType {
+pub enum Integer {
+    Char,
     Int,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum CType {
+    Integer(Integer),
     Pointer(Box<Self>),
     Array(Box<Self>, usize),
     Statement,
@@ -31,33 +37,33 @@ impl CType {
             | NodeKind::Return(..)
             | NodeKind::If(..)
             | NodeKind::For(..) => Ok(Self::Statement),
-            NodeKind::Assign(lhs, rhs) => {
-                if lhs.ctype == rhs.ctype {
+            NodeKind::Assign(lhs, rhs) => match (&lhs.ctype, &rhs.ctype) {
+                (Self::Integer(_), Self::Integer(_)) => Ok(lhs.ctype.clone()),
+                (Self::Pointer(_), Self::Pointer(_)) if lhs.ctype == rhs.ctype => {
                     Ok(lhs.ctype.clone())
-                } else {
-                    Err(invalid_operand)
                 }
-            }
+                _ => Err(invalid_operand),
+            },
             NodeKind::Eq(..) | NodeKind::Neq(..) | NodeKind::LT(..) | NodeKind::LTE(..) => {
-                Ok(Self::Int)
+                Ok(Self::Integer(Integer::Int))
             }
             NodeKind::Add(lhs, rhs) | NodeKind::Sub(lhs, rhs) => match (&lhs.ctype, &rhs.ctype) {
-                (Self::Int, Self::Int) => Ok(Self::Int),
-                (Self::Pointer(base), Self::Int) => {
+                (Self::Integer(_), Self::Integer(_)) => Ok(Self::Integer(Integer::Int)),
+                (Self::Pointer(base), Self::Integer(_)) => {
                     Self::index(rhs, base.size());
                     Ok(lhs.ctype.clone())
                 }
-                (Self::Int, Self::Pointer(base)) => {
+                (Self::Integer(_), Self::Pointer(base)) => {
                     Self::index(lhs, base.size());
                     Ok(rhs.ctype.clone())
                 }
-                (Self::Array(base, _), Self::Int) => {
+                (Self::Array(base, _), Self::Integer(_)) => {
                     let base = base.clone();
                     Self::array_to_ptr(lhs);
                     Self::index(rhs, base.size());
                     Ok(CType::Pointer(base))
                 }
-                (Self::Int, Self::Array(base, _)) => {
+                (Self::Integer(_), Self::Array(base, _)) => {
                     let base = base.clone();
                     Self::index(lhs, base.size());
                     Self::array_to_ptr(rhs);
@@ -66,7 +72,7 @@ impl CType {
                 _ => Err(invalid_operand),
             },
             NodeKind::Mul(lhs, rhs) | NodeKind::Div(lhs, rhs) => match (&lhs.ctype, &rhs.ctype) {
-                (Self::Int, Self::Int) => Ok(Self::Int),
+                (Self::Integer(_), Self::Integer(_)) => Ok(Self::Integer(Integer::Int)),
                 _ => Err(invalid_operand),
             },
             NodeKind::Addr(operand) => match &operand.kind {
@@ -80,9 +86,9 @@ impl CType {
                 Self::Pointer(base) => Ok(*base.clone()),
                 _ => Err(invalid_operand),
             },
-            NodeKind::Num(..) => Ok(Self::Int),
+            NodeKind::Num(..) => Ok(Self::Integer(Integer::Int)),
             NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => Ok(ctype.clone()),
-            NodeKind::Call(..) => Ok(Self::Int),
+            NodeKind::Call(..) => Ok(Self::Integer(Integer::Int)),
         }
     }
 
@@ -108,7 +114,7 @@ impl CType {
         // ポインタが指す型で割るようにkindを置き換える
         if let Some(base_size) = base_size {
             Self::num_of_elements(token, kind, base_size);
-            Some(Self::Int)
+            Some(Self::Integer(Integer::Int))
         } else {
             None
         }
@@ -137,7 +143,8 @@ impl CType {
 
     pub fn size(&self) -> usize {
         match self {
-            Self::Int => 8,
+            Self::Integer(Integer::Char) => 1,
+            Self::Integer(Integer::Int) => 8,
             Self::Pointer(_) => 8,
             Self::Array(base, size) => base.size() * size,
             Self::Statement => 0,
@@ -148,8 +155,7 @@ impl CType {
     // 例えば、int[2][3]なら6, intなら1。
     pub fn flat_len(&self) -> usize {
         match self {
-            Self::Int => 1,
-            Self::Pointer(_) => 1,
+            Self::Integer(_) | Self::Pointer(_) => 1,
             Self::Array(base, size) => base.flat_len() * size,
             Self::Statement => 0,
         }
@@ -169,7 +175,7 @@ impl CType {
         }
     }
 
-    fn base(&self) -> Option<&Self> {
+    pub fn base(&self) -> Option<&Self> {
         match self {
             Self::Array(base, _) => Some(&base),
             Self::Pointer(base) => Some(&base),
@@ -196,7 +202,7 @@ impl CType {
         let dummy_kind = NodeKind::Num(0);
         let org_kind = replace(kind, dummy_kind);
 
-        let ctype = Self::Int;
+        let ctype = Self::Integer(Integer::Int);
         let org_node = Box::new(Node {
             token: Rc::clone(token),
             kind: org_kind,
@@ -213,7 +219,8 @@ impl CType {
 impl fmt::Display for CType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Int => write!(f, "int"),
+            Self::Integer(Integer::Char) => write!(f, "char"),
+            Self::Integer(Integer::Int) => write!(f, "int"),
             Self::Pointer(base) => write!(f, "{}*", base),
             Self::Array(base, size) => write!(f, "{}[{}]", base, size),
             Self::Statement => write!(f, "Statement"),

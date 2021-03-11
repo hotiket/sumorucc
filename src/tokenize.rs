@@ -167,6 +167,7 @@ impl<'vec> TokenStream<'vec> {
 
     // 次のトークンが期待しているキーワードの場合、そのトークンを返し
     // トークンを1つ読み進める。それ以外の場合にはエラーを報告する。
+    #[allow(dead_code)]
     pub fn expect_keyword(&mut self, keyword: &str) -> Rc<Token> {
         let token = self.consume_keyword(keyword);
 
@@ -212,7 +213,9 @@ fn is_ident_2(c: char) -> bool {
 }
 
 fn is_keyword(s: &str) -> bool {
-    let keywords = ["return", "if", "else", "for", "while", "int", "sizeof"];
+    let keywords = [
+        "return", "if", "else", "for", "while", "int", "char", "sizeof",
+    ];
 
     for keyword in &keywords {
         if s == *keyword {

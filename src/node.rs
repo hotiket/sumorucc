@@ -6,8 +6,8 @@ use super::tokenize::Token;
 
 #[derive(Clone)]
 pub enum NodeKind {
-    // name, params(offset), body
-    Defun(String, Vec<usize>, Box<Node>),
+    // name, params(offset, type), body
+    Defun(String, Vec<(usize, CType)>, Box<Node>),
     Block(Vec<Node>),
     Return(Box<Node>),
     // cond, then, else
@@ -110,8 +110,8 @@ impl Node {
         match &self.kind {
             NodeKind::Defun(name, params, body) => {
                 eprint!("{}Defun({}", head, &name);
-                for param in params.iter() {
-                    eprint!("{}, ", param);
+                for (offset, ctype) in params.iter() {
+                    eprint!("{}:{}, ", offset, ctype);
                 }
                 eprintln!(")");
                 body.debug_print_impl(depth + 1);

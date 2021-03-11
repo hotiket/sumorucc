@@ -188,4 +188,15 @@ assert 9 "int x[4][3][2]={{{1},}, {{2,3},}, {{4,5}, {6},}}; int main(){return (x
 assert 9 "int x[4][3][2]={{1}, {2,3}, {4,5,6}}; int main(){return (x[0][0][0]==1)+(x[0][2][1]==0)+(x[1][0][0]==2)+(x[1][0][1]==3)+(x[2][0][0]==4)+(x[2][0][1]==5)+(x[2][1][0]==6)+(x[2][2][1]==0)+(x[3][2][1]==0);}"
 assert 9 "int x[4][3][2]={1,0,0,0,0,0, 2,3,0,0,0,0, 4,5,6}; int main(){return (x[0][0][0]==1)+(x[0][2][1]==0)+(x[1][0][0]==2)+(x[1][0][1]==3)+(x[2][0][0]==4)+(x[2][0][1]==5)+(x[2][1][0]==6)+(x[2][2][1]==0)+(x[3][2][1]==0);}"
 
+assert 30 "int main(){char x, y; x=y=29; return x+(x==y);}"
+assert 31 "int main(){char x=31; char *p=&x; return *p;}"
+assert 1 "int main(){char c; return sizeof c;}"
+assert 10 "int main(){char str[10]; return sizeof str;}"
+assert 8 "int main(){char *p; return sizeof p;}"
+assert 4 "int main(){char a=-1, v[2][2]={3,2,-1}; return (v[0][0]==3)+(v[0][1]==2)+(v[1][0]==a)+(v[1][1]==0);}"
+assert 4 "char a=-1, v[2][2]={3,2,-1}; int main(){return (v[0][0]==3)+(v[0][1]==2)+(v[1][0]==a)+(v[1][1]==0);}"
+assert 7 "int main(){char x=1; int v[2]={3,7}; return v[x];}"
+assert 1 "int f(char a, char b, char c){return a-b-c;} int main(){return f(7, 3, 3);}"
+assert 100 "int f(char a, char b, int c){return c-a*10-b*10;} int main(){return f(10, 20, 400);}"
+
 echo OK

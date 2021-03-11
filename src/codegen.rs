@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::ctype::CType;
+use super::ctype::{CType, Integer};
 use super::node::{Node, NodeKind};
 use super::parse_context::{GVar, ParseContext};
 
@@ -30,17 +30,37 @@ enum Register {
     RCX,
     R8,
     R9,
+
+    // 下位8bit
+    AL,
+    DIL,
+    BPL,
+    SIL,
+    DL,
+    CL,
+    R8B,
+    R9B,
 }
 
-// 関数呼び出しの際に引数をセットするレジスタ
+// 関数呼び出しの際に引数をセットするレジスタ(64bit)
 // RDIから順に第1引数, 第2引数, ..., 第6引数と並んでいる
-static ARG_REG: [Register; 6] = [
+static ARG_REG64: [Register; 6] = [
     Register::RDI,
     Register::RSI,
     Register::RDX,
     Register::RCX,
     Register::R8,
     Register::R9,
+];
+
+// 関数呼び出しの際に引数をセットするレジスタ(8bit)
+static ARG_REG8: [Register; 6] = [
+    Register::DIL,
+    Register::SIL,
+    Register::DL,
+    Register::CL,
+    Register::R8B,
+    Register::R9B,
 ];
 
 impl fmt::Display for Register {
@@ -54,6 +74,15 @@ impl fmt::Display for Register {
             Self::RCX => write!(f, "rcx"),
             Self::R8 => write!(f, "r8"),
             Self::R9 => write!(f, "r9"),
+
+            Self::AL => write!(f, "al"),
+            Self::DIL => write!(f, "dil"),
+            Self::BPL => write!(f, "bpl"),
+            Self::SIL => write!(f, "sil"),
+            Self::DL => write!(f, "dl"),
+            Self::CL => write!(f, "cl"),
+            Self::R8B => write!(f, "r8b"),
+            Self::R9B => write!(f, "r9b"),
         }
     }
 }
@@ -91,6 +120,16 @@ fn gen_lval(node: &Node, ctx: &mut Context) {
         _ => {
             error_tok!(node.token, "代入の左辺値が変数ではありません");
         }
+    }
+}
+
+// raxが指すアドレスの値をraxにセットする
+fn gen_load(ctype: &CType) {
+    match ctype {
+        CType::Integer(Integer::Char) => println!("        movsbq (%rax), %rax"),
+        CType::Integer(Integer::Int) => println!("        mov (%rax), %rax"),
+        CType::Pointer(_) => println!("        mov (%rax), %rax"),
+        _ => unreachable!(),
     }
 }
 
@@ -154,8 +193,16 @@ fn gen(node: &Node, ctx: &mut Context) {
             push(Register::RAX, ctx);
             gen_lval(lhs, ctx);
             pop(Register::RDI, ctx);
-            println!("        mov %rdi, (%rax)");
-            println!("        mov %rdi, %rax");
+            match &lhs.ctype {
+                CType::Integer(Integer::Char) => {
+                    println!("        mov %dil, (%rax)");
+                    println!("        movsbq %dil, %rax");
+                }
+                _ => {
+                    println!("        mov %rdi, (%rax)");
+                    println!("        mov %rdi, %rax");
+                }
+            }
         }
         NodeKind::Eq(lhs, rhs) => {
             gen_binary_operator(lhs, rhs, ctx);
@@ -201,16 +248,17 @@ fn gen(node: &Node, ctx: &mut Context) {
         NodeKind::Addr(operand) => {
             gen_lval(operand, ctx);
         }
-        NodeKind::Deref(_) => {
+        NodeKind::Deref(operand) => {
             gen_lval(node, ctx);
-            println!("        mov (%rax), %rax");
+            let base = operand.ctype.base().unwrap();
+            gen_load(&base);
         }
         NodeKind::Num(n) => {
             println!("        mov ${}, %rax", n);
         }
-        NodeKind::LVar(..) | NodeKind::GVar(..) => {
+        NodeKind::LVar(_, ref ctype, _) | NodeKind::GVar(_, ref ctype) => {
             gen_lval(node, ctx);
-            println!("        mov (%rax), %rax");
+            gen_load(ctype);
         }
         NodeKind::Call(name, args) => {
             // 関数呼び出しの引数をスタックに積む
@@ -220,7 +268,7 @@ fn gen(node: &Node, ctx: &mut Context) {
             }
 
             // x86-64の呼び出し規約に従いレジスタに引数をセットする
-            for reg in ARG_REG.iter().take(args.len()).rev() {
+            for reg in ARG_REG64.iter().take(args.len()).rev() {
                 pop(*reg, ctx);
             }
 
@@ -253,7 +301,7 @@ fn gen_gvar(gvar: &GVar) {
 
     if let Some(val) = &gvar.val {
         match &gvar.ctype {
-            CType::Int | CType::Pointer(..) => {
+            CType::Integer(..) | CType::Pointer(..) => {
                 let size = ctype_to_data_directive(&gvar.ctype);
                 let val = val.first().unwrap();
                 gen_init_val(val, size);
@@ -283,6 +331,7 @@ fn gen_init_val(val: &Node, size: &str) {
 
 fn ctype_to_data_directive(ctype: &CType) -> &str {
     match ctype.size() {
+        1 => ".byte",
         8 => ".quad",
         _ => unreachable!(),
     }
@@ -295,7 +344,7 @@ fn function_header(name: &str, ctx: &mut Context) {
     println!("{}:", name);
 }
 
-fn prologue(mut stack_size: usize, params: &[usize], ctx: &mut Context) {
+fn prologue(mut stack_size: usize, params: &[(usize, CType)], ctx: &mut Context) {
     // 関数を呼ぶ時のRSPのアライメントをしやすくするために
     // スタックサイズを16の倍数にする。
     stack_size = (stack_size + 16 - 1) / 16 * 16;
@@ -306,10 +355,15 @@ fn prologue(mut stack_size: usize, params: &[usize], ctx: &mut Context) {
 
     // x86-64の呼び出し規約に従い引数をレジスタから
     // スタック上のローカル変数にセットする。
-    for (offset, reg) in params.iter().zip(ARG_REG.iter()) {
+    let iter = params.iter().zip(ARG_REG8.iter()).zip(ARG_REG64.iter());
+    for (((offset, ctype), reg8), reg64) in iter {
         println!("        mov %rbp, %rax");
         println!("        sub ${}, %rax", offset);
-        println!("        mov %{}, (%rax)", reg);
+        match ctype.size() {
+            1 => println!("        movb %{}, (%rax)", reg8),
+            8 => println!("        mov %{}, (%rax)", reg64),
+            _ => unreachable!(),
+        }
     }
 }
 
