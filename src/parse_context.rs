@@ -1,4 +1,4 @@
-use super::ctype::CType;
+use super::ctype::{CType, Integer};
 use super::node::{Node, NodeKind};
 
 pub struct LVar {
@@ -17,6 +17,13 @@ pub struct GVar {
     pub ctype: CType,
     // 初期値
     pub val: Option<Vec<Node>>,
+}
+
+pub struct Str {
+    // 文字列を指すラベル
+    pub label: String,
+    // 文字列の中身
+    pub val: String,
 }
 
 struct Scope {
@@ -161,7 +168,9 @@ impl Function {
 pub struct ParseContext {
     pub funcs: Vec<Function>,
     pub gvars: Vec<GVar>,
+    pub strs: Vec<Str>,
     current_fn: Option<String>,
+    str_n: usize,
 }
 
 impl ParseContext {
@@ -169,7 +178,9 @@ impl ParseContext {
         Self {
             funcs: Vec::new(),
             gvars: Vec::new(),
+            strs: Vec::new(),
             current_fn: None,
+            str_n: 0,
         }
     }
 
@@ -224,6 +235,18 @@ impl ParseContext {
             });
             Ok(())
         }
+    }
+
+    pub fn add_str(&mut self, val: String) -> (String, CType) {
+        let label = format!(".L__String{}", self.str_n);
+        let ret = label.clone();
+        let base = Box::new(CType::Integer(Integer::Char));
+        let ctype = CType::Array(base, val.len() + 1);
+        self.strs.push(Str { label, val });
+
+        self.str_n += 1;
+
+        (ret, ctype)
     }
 
     pub fn find_var(&self, name: &str) -> Option<NodeKind> {

@@ -199,4 +199,12 @@ assert 7 "int main(){char x=1; int v[2]={3,7}; return v[x];}"
 assert 1 "int f(char a, char b, char c){return a-b-c;} int main(){return f(7, 3, 3);}"
 assert 100 "int f(char a, char b, int c){return c-a*10-b*10;} int main(){return f(10, 20, 400);}"
 
+assert 99 'int main(){char *p = "A"; return 99;}'
+assert 66 'int main(){char b="ABC"[1]; return b;}'
+assert 0 'int main(){char null="123"[3]; return null;}'
+assert 3 'int main(){char *p="Hello"; char *q="String"; return q[0] + q[5] - p[0] - p[4];}'
+assert 13 'int main(){return sizeof "Hello world!";}'
+assert 185 'char *p="GVar"; int main(){return p[0] + p[3] + p[4];}'
+assert 144 'char *p[2]={"Hello", "world!"}; int main(){return p[0][4] + p[1][5];}'
+
 echo OK

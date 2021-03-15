@@ -42,6 +42,10 @@ impl CType {
                 (Self::Pointer(_), Self::Pointer(_)) if lhs.ctype == rhs.ctype => {
                     Ok(lhs.ctype.clone())
                 }
+                (Self::Pointer(p_base), Self::Array(a_base, _)) if p_base == a_base => {
+                    Self::array_to_ptr(rhs);
+                    Ok(lhs.ctype.clone())
+                }
                 _ => Err(invalid_operand),
             },
             NodeKind::Eq(..) | NodeKind::Neq(..) | NodeKind::LT(..) | NodeKind::LTE(..) => {

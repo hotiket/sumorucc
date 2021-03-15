@@ -2,7 +2,7 @@ use std::fmt;
 
 use super::ctype::{CType, Integer};
 use super::node::{Node, NodeKind};
-use super::parse_context::{GVar, ParseContext};
+use super::parse_context::{GVar, ParseContext, Str};
 
 macro_rules! code {
     ($fmt:expr) => {
@@ -312,6 +312,15 @@ fn gen(node: &Node, ctx: &mut Context) {
     }
 }
 
+fn gen_str(string: &Str) {
+    code!(".section .rodata");
+    label!("{}", string.label);
+    for b in string.val.bytes() {
+        code!(".byte 0x{:02x}", b);
+    }
+    code!(".byte 0x00");
+}
+
 fn gen_gvar(gvar: &GVar) {
     code!(".data");
     code!(".globl {}", gvar.name);
@@ -340,11 +349,18 @@ fn gen_gvar(gvar: &GVar) {
 }
 
 fn gen_init_val(val: &Node, size: &str) {
-    let n = val.to_isize();
-    if n.is_none() {
-        error_tok!(val.token, "初期値が定数式ではありません");
+    match &val.kind {
+        NodeKind::GVar(ref name, ..) => {
+            code!("{} {}", size, name);
+        }
+        _ => {
+            let n = val.to_isize();
+            if n.is_none() {
+                error_tok!(val.token, "初期値が定数式ではありません");
+            }
+            code!("{} {}", size, n.unwrap());
+        }
     }
-    code!("{} {}", size, n.unwrap());
 }
 
 fn ctype_to_data_directive(ctype: &CType) -> &str {
@@ -394,6 +410,9 @@ fn epilogue(ctx: &mut Context) {
 
 pub fn codegen(nodes: &[Node], parse_ctx: &ParseContext) {
     let mut ctx = Context::new();
+
+    // 文字列をrodataセクションに出力
+    parse_ctx.strs.iter().for_each(gen_str);
 
     // グローバル変数をdataセクションに出力
     parse_ctx.gvars.iter().for_each(gen_gvar);

@@ -17,6 +17,8 @@ enum TokenKind {
     Keyword,
     // 整数
     Num(isize),
+    // 文字列
+    Str(String),
     // 入力の終わりを表すトークン
     EOF,
 }
@@ -99,6 +101,18 @@ impl<'vec> TokenStream<'vec> {
                 kind: TokenKind::Num(n),
                 ..
             }) => Some((self.next().unwrap(), *n)),
+            _ => None,
+        }
+    }
+
+    // 次のトークンが文字列の場合、そのトークンと文字列をSomeで包んで返し
+    // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
+    pub fn consume_string(&mut self) -> Option<(Rc<Token>, String)> {
+        match self.peek().as_deref() {
+            Some(Token {
+                kind: TokenKind::Str(s),
+                ..
+            }) => Some((self.next().unwrap(), s.clone())),
             _ => None,
         }
     }
@@ -255,6 +269,29 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                         pos,
                     },
                     kind: TokenKind::Num(n),
+                }));
+            }
+
+            // 文字列
+            '"' => {
+                while let Some((_, (_, c))) = src_iter.next() {
+                    if c == '"' {
+                        break;
+                    } else {
+                        byte_e += c.len_utf8();
+                    }
+                }
+
+                let byte_s = byte_s + c.len_utf8();
+                let token_str = src[byte_s..byte_e].to_string();
+
+                token.push(Rc::new(Token {
+                    common: TokenCommon {
+                        token_str: token_str.clone(),
+                        src: Rc::clone(&src),
+                        pos,
+                    },
+                    kind: TokenKind::Str(token_str),
                 }));
             }
 

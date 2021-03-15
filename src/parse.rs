@@ -641,7 +641,7 @@ fn postfix(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     node
 }
 
-// primary := "(" expr ")" | num | ident call_args?
+// primary := "(" expr ")" | num | str | ident call_args?
 fn primary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     if stream.consume_punctuator("(").is_some() {
         let node = expr(stream, ctx);
@@ -649,6 +649,9 @@ fn primary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
         node
     } else if let Some((token, n)) = stream.consume_number() {
         Node::new(token, NodeKind::Num(n))
+    } else if let Some((token, s)) = stream.consume_string() {
+        let (label, ctype) = ctx.add_str(s);
+        Node::new(token, NodeKind::GVar(label, ctype))
     } else {
         let (token, name) = stream.expect_identifier();
 
