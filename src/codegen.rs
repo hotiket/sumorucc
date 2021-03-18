@@ -315,10 +315,9 @@ fn gen(node: &Node, ctx: &mut Context) {
 fn gen_str(string: &Str) {
     code!(".section .rodata");
     label!("{}", string.label);
-    for b in string.val.bytes() {
+    for b in string.val.iter() {
         code!(".byte 0x{:02x}", b);
     }
-    code!(".byte 0x00");
 }
 
 fn gen_gvar(gvar: &GVar) {

@@ -207,4 +207,18 @@ assert 13 'int main(){return sizeof "Hello world!";}'
 assert 185 'char *p="GVar"; int main(){return p[0] + p[3] + p[4];}'
 assert 144 'char *p[2]={"Hello", "world!"}; int main(){return p[0][4] + p[1][5];}'
 
+assert 7 'int main(){return "\a\b\f\n\r\t\v\e"[0];}'
+assert 8 'int main(){return "\a\b\f\n\r\t\v\e"[1];}'
+assert 12 'int main(){return "\a\b\f\n\r\t\v\e"[2];}'
+assert 10 'int main(){return "\a\b\f\n\r\t\v\e"[3];}'
+assert 13 'int main(){return "\a\b\f\n\r\t\v\e"[4];}'
+assert 9 'int main(){return "\a\b\f\n\r\t\v\e"[5];}'
+assert 8 'int main(){return "\a\b\f\n\r\t\v\e"[6];}'
+assert 27 'int main(){return "\a\b\f\n\r\t\v\e"[7];}'
+assert 34 'int main(){return "\"\?\\"[0];}'
+assert 63 'int main(){return "\"\?\\"[1];}'
+assert 92 'int main(){return "\"\?\\"[2];}'
+assert 39 "int main(){return \"\\'\"[0];}"
+assert 198 'int main(){char *p="\A\B\C"; return p[0] + p[1] + p[2] + p[3];}'
+
 echo OK

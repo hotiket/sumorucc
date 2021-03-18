@@ -1,4 +1,6 @@
+use std::iter::{Enumerate, Peekable};
 use std::rc::Rc;
+use std::str::CharIndices;
 
 pub struct TokenCommon {
     pub token_str: String,
@@ -18,7 +20,7 @@ enum TokenKind {
     // 整数
     Num(isize),
     // 文字列
-    Str(String),
+    Str(Vec<u8>),
     // 入力の終わりを表すトークン
     EOF,
 }
@@ -107,7 +109,7 @@ impl<'vec> TokenStream<'vec> {
 
     // 次のトークンが文字列の場合、そのトークンと文字列をSomeで包んで返し
     // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
-    pub fn consume_string(&mut self) -> Option<(Rc<Token>, String)> {
+    pub fn consume_string(&mut self) -> Option<(Rc<Token>, Vec<u8>)> {
         match self.peek().as_deref() {
             Some(Token {
                 kind: TokenKind::Str(s),
@@ -240,6 +242,76 @@ fn is_keyword(s: &str) -> bool {
     false
 }
 
+fn push_char_as_u8(v: &mut Vec<u8>, c: char) {
+    let mut buf = [0; 4];
+    let u8_s = c.encode_utf8(&mut buf);
+    for b in u8_s.bytes() {
+        v.push(b);
+    }
+}
+
+fn read_string(
+    src_iter: &mut Peekable<Enumerate<CharIndices>>,
+    terminator: char,
+) -> Option<(Vec<u8>, usize)> {
+    const ESCAPE_SEQUENCES: [(char, u8); 12] = [
+        ('\'', b'\''),
+        ('\"', b'"'),
+        ('?', b'?'),
+        ('\\', b'\\'),
+        ('a', 7),
+        ('b', 8),
+        ('f', 12),
+        ('n', b'\n'),
+        ('r', b'\r'),
+        ('t', b'\t'),
+        ('v', 8),
+        ('e', 27),
+    ];
+
+    let mut bytes = Vec::new();
+    // 文字列リテラル開始から終端までに読んだバイト数
+    let mut nr_read_bytes = 0;
+
+    let mut is_terminated = false;
+
+    while let Some((_, (_, c))) = src_iter.next() {
+        match c {
+            // 終端文字
+            _ if c == terminator => is_terminated = true,
+            // エスケープシーケンス
+            '\\' => {
+                if let Some((_, (_, c))) = src_iter.next() {
+                    if let Some(e) = ESCAPE_SEQUENCES.iter().find(|e| e.0 == c) {
+                        bytes.push(e.1);
+                    } else {
+                        push_char_as_u8(&mut bytes, c);
+                    }
+
+                    // 追加で読んだ1文字分を加算
+                    nr_read_bytes += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            // その他の文字
+            _ => push_char_as_u8(&mut bytes, c),
+        }
+
+        nr_read_bytes += c.len_utf8();
+
+        if is_terminated {
+            break;
+        }
+    }
+
+    if is_terminated {
+        Some((bytes, nr_read_bytes))
+    } else {
+        None
+    }
+}
+
 pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
     let mut token = Vec::new();
     let mut src_iter = src.char_indices().enumerate().peekable();
@@ -274,25 +346,23 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
 
             // 文字列
             '"' => {
-                while let Some((_, (_, c))) = src_iter.next() {
-                    if c == '"' {
-                        break;
-                    } else {
-                        byte_e += c.len_utf8();
-                    }
+                if let Some((mut string, nr_read_bytes)) = read_string(&mut src_iter, '"') {
+                    string.push(b'\0');
+
+                    byte_e += nr_read_bytes;
+                    let token_str = src[byte_s..byte_e].to_string();
+
+                    token.push(Rc::new(Token {
+                        common: TokenCommon {
+                            token_str,
+                            src: Rc::clone(&src),
+                            pos,
+                        },
+                        kind: TokenKind::Str(string),
+                    }));
+                } else {
+                    error_at!(src, pos, "終端されていません");
                 }
-
-                let byte_s = byte_s + c.len_utf8();
-                let token_str = src[byte_s..byte_e].to_string();
-
-                token.push(Rc::new(Token {
-                    common: TokenCommon {
-                        token_str: token_str.clone(),
-                        src: Rc::clone(&src),
-                        pos,
-                    },
-                    kind: TokenKind::Str(token_str),
-                }));
             }
 
             // "+", "*", ";"といった記号

@@ -23,7 +23,7 @@ pub struct Str {
     // 文字列を指すラベル
     pub label: String,
     // 文字列の中身
-    pub val: String,
+    pub val: Vec<u8>,
 }
 
 struct Scope {
@@ -237,11 +237,11 @@ impl ParseContext {
         }
     }
 
-    pub fn add_str(&mut self, val: String) -> (String, CType) {
+    pub fn add_str(&mut self, val: Vec<u8>) -> (String, CType) {
         let label = format!(".L__String{}", self.str_n);
         let ret = label.clone();
         let base = Box::new(CType::Integer(Integer::Char));
-        let ctype = CType::Array(base, val.len() + 1);
+        let ctype = CType::Array(base, val.len());
         self.strs.push(Str { label, val });
 
         self.str_n += 1;
