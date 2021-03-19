@@ -228,4 +228,9 @@ assert 171 'int main(){return "\x0Abx"[0];}'
 assert 120 'int main(){return "\x0Abx"[1];}'
 assert 255 'int main(){return "\x00ff"[0];}'
 
+assert 0 'int main(){return "\0"[0];}'
+assert 7 'int main(){return "\007"[0];}'
+assert 87 'int main(){return "\127"[0];}'
+assert 48 'int main(){return "\1500"[1];}'
+
 echo OK

@@ -250,6 +250,14 @@ fn push_char_as_u8(v: &mut Vec<u8>, c: char) {
     }
 }
 
+fn read_oct_escape_sequence(
+    src_iter: &mut Peekable<Enumerate<CharIndices>>,
+) -> Option<(u8, usize)> {
+    const DIGITS: [char; 8] = ['0', '1', '2', '3', '4', '5', '6', '7'];
+
+    read_num_escape_sequence(src_iter, 8, &DIGITS, Some(3))
+}
+
 fn read_hex_escape_sequence(
     src_iter: &mut Peekable<Enumerate<CharIndices>>,
 ) -> Option<(u8, usize)> {
@@ -258,13 +266,14 @@ fn read_hex_escape_sequence(
         'C', 'D', 'E', 'F',
     ];
 
-    read_num_escape_sequence(src_iter, 16, &DIGITS)
+    read_num_escape_sequence(src_iter, 16, &DIGITS, None)
 }
 
 fn read_num_escape_sequence(
     src_iter: &mut Peekable<Enumerate<CharIndices>>,
     radix: u32,
     digits: &[char],
+    max_digits: Option<usize>,
 ) -> Option<(u8, usize)> {
     let mut nr_read_bytes = 0;
 
@@ -280,14 +289,23 @@ fn read_num_escape_sequence(
         return None;
     }
 
+    let mut nr_read_char = 0;
+
     loop {
         if let Some((_, (_, c))) = src_iter.peek() {
             if digits.contains(c) {
                 s.push(*c);
                 nr_read_bytes += c.len_utf8();
+                nr_read_char += 1;
                 src_iter.next();
             } else {
                 break;
+            }
+
+            if let Some(max_digits) = max_digits {
+                if nr_read_char >= max_digits {
+                    break;
+                }
             }
         } else {
             return None;
@@ -344,9 +362,13 @@ fn read_string(
                         bytes.push(e.1);
                         nr_read_bytes += c.len_utf8();
                         src_iter.next();
-                    } else if *c == 'x' {
-                        // hexadecimal-escape-sequence
-                        let ret = read_hex_escape_sequence(src_iter);
+                    } else if ('0'..='9').contains(c) || *c == 'x' {
+                        // octal-escape-sequenceもしくはhexadecimal-escape-sequence
+                        let ret = if *c == 'x' {
+                            read_hex_escape_sequence(src_iter)
+                        } else {
+                            read_oct_escape_sequence(src_iter)
+                        };
 
                         if let Some((c, add_bytes)) = ret {
                             bytes.push(c);
