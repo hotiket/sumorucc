@@ -221,4 +221,11 @@ assert 92 'int main(){return "\"\?\\"[2];}'
 assert 39 "int main(){return \"\\'\"[0];}"
 assert 198 'int main(){char *p="\A\B\C"; return p[0] + p[1] + p[2] + p[3];}'
 
+assert 10 'int main(){return "\xa"[0];}'
+assert 10 'int main(){return "\xA"[0];}'
+assert 171 'int main(){return "\x0aB"[0];}'
+assert 171 'int main(){return "\x0Abx"[0];}'
+assert 120 'int main(){return "\x0Abx"[1];}'
+assert 255 'int main(){return "\x00ff"[0];}'
+
 echo OK

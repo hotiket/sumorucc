@@ -250,6 +250,63 @@ fn push_char_as_u8(v: &mut Vec<u8>, c: char) {
     }
 }
 
+fn read_hex_escape_sequence(
+    src_iter: &mut Peekable<Enumerate<CharIndices>>,
+) -> Option<(u8, usize)> {
+    const DIGITS: [char; 22] = [
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B',
+        'C', 'D', 'E', 'F',
+    ];
+
+    read_num_escape_sequence(src_iter, 16, &DIGITS)
+}
+
+fn read_num_escape_sequence(
+    src_iter: &mut Peekable<Enumerate<CharIndices>>,
+    radix: u32,
+    digits: &[char],
+) -> Option<(u8, usize)> {
+    let mut nr_read_bytes = 0;
+
+    let mut s = String::new();
+
+    // 最初にhexadecimal-escape-sequenceを示す'x'があれば読み捨てる
+    if let Some((_, (_, c))) = src_iter.peek() {
+        if *c == 'x' {
+            nr_read_bytes += c.len_utf8();
+            src_iter.next();
+        }
+    } else {
+        return None;
+    }
+
+    loop {
+        if let Some((_, (_, c))) = src_iter.peek() {
+            if digits.contains(c) {
+                s.push(*c);
+                nr_read_bytes += c.len_utf8();
+                src_iter.next();
+            } else {
+                break;
+            }
+        } else {
+            return None;
+        }
+    }
+
+    let num = isize::from_str_radix(&s, radix).unwrap();
+
+    // 1バイトで表現できない場合の値は処理系定義。
+    // とりあえず0から255でclampして返すことにする。
+    if num < 0 {
+        Some((0, nr_read_bytes))
+    } else if num > 255 {
+        Some((255, nr_read_bytes))
+    } else {
+        Some((num as u8, nr_read_bytes))
+    }
+}
+
 fn read_string(
     src_iter: &mut Peekable<Enumerate<CharIndices>>,
     terminator: char,
@@ -281,15 +338,27 @@ fn read_string(
             _ if c == terminator => is_terminated = true,
             // エスケープシーケンス
             '\\' => {
-                if let Some((_, (_, c))) = src_iter.next() {
-                    if let Some(e) = ESCAPE_SEQUENCES.iter().find(|e| e.0 == c) {
+                if let Some((_, (_, c))) = src_iter.peek() {
+                    if let Some(e) = ESCAPE_SEQUENCES.iter().find(|e| e.0 == *c) {
+                        // simple-escape-sequence
                         bytes.push(e.1);
-                    } else {
-                        push_char_as_u8(&mut bytes, c);
-                    }
+                        nr_read_bytes += c.len_utf8();
+                        src_iter.next();
+                    } else if *c == 'x' {
+                        // hexadecimal-escape-sequence
+                        let ret = read_hex_escape_sequence(src_iter);
 
-                    // 追加で読んだ1文字分を加算
-                    nr_read_bytes += c.len_utf8();
+                        if let Some((c, add_bytes)) = ret {
+                            bytes.push(c);
+                            nr_read_bytes += add_bytes;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        push_char_as_u8(&mut bytes, *c);
+                        nr_read_bytes += c.len_utf8();
+                        src_iter.next();
+                    }
                 } else {
                     break;
                 }
