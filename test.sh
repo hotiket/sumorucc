@@ -14,7 +14,7 @@ assert() {
 	expected="$1"
 	input="$2"
 
-	target/debug/rcc "$input" >tmp.s
+	echo "$input" | target/release/rcc - >tmp.s
 	cc -o tmp tmp.s "$TEST_FN_FILE"
 	./tmp
 	actual="$?"
@@ -27,7 +27,7 @@ assert() {
 	fi
 }
 
-cargo build
+cargo build --release
 
 assert 0 "int main(){return 0;}"
 assert 42 "int main(){return 42;}"

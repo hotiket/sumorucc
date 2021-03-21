@@ -2,9 +2,11 @@ use std::iter::{Enumerate, Peekable};
 use std::rc::Rc;
 use std::str::CharIndices;
 
+use super::Source;
+
 pub struct TokenCommon {
     pub token_str: String,
-    pub src: Rc<str>,
+    pub src: Rc<Source>,
     // ソースにおけるトークンの
     // コードポイント単位での開始位置
     pub pos: usize,
@@ -40,7 +42,7 @@ impl<'vec> TokenStream<'vec> {
         Self { token, current: 0 }
     }
 
-    fn get_src(&self) -> Rc<str> {
+    fn get_src(&self) -> Rc<Source> {
         // 終端にEOFがあるので0要素目は必ず存在する
         Rc::clone(&self.token.get(0).unwrap().common.src)
     }
@@ -74,7 +76,7 @@ impl<'vec> TokenStream<'vec> {
         if let Some(token) = self.peek() {
             token.common.pos
         } else {
-            self.get_src().chars().count()
+            self.get_src().code.chars().count()
         }
     }
 
@@ -403,9 +405,9 @@ fn read_string(
     }
 }
 
-pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
+pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
     let mut token = Vec::new();
-    let mut src_iter = src.char_indices().enumerate().peekable();
+    let mut src_iter = src.code.char_indices().enumerate().peekable();
 
     while let Some((pos, (byte_s, c))) = src_iter.next() {
         let mut byte_e = byte_s + c.len_utf8();
@@ -422,7 +424,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                     }
                 }
 
-                let token_str = src[byte_s..byte_e].to_string();
+                let token_str = src.code[byte_s..byte_e].to_string();
                 let n = token_str.parse::<isize>().unwrap();
 
                 token.push(Rc::new(Token {
@@ -441,7 +443,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                     string.push(b'\0');
 
                     byte_e += nr_read_bytes;
-                    let token_str = src[byte_s..byte_e].to_string();
+                    let token_str = src.code[byte_s..byte_e].to_string();
 
                     token.push(Rc::new(Token {
                         common: TokenCommon {
@@ -457,10 +459,10 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
             }
 
             // "+", "*", ";"といった記号
-            _ if is_punctuator(&src[byte_s..byte_e]) => {
+            _ if is_punctuator(&src.code[byte_s..byte_e]) => {
                 while let Some((_, (_, c))) = src_iter.peek() {
                     let new_byte_e = byte_e + c.len_utf8();
-                    if is_punctuator(&src[byte_s..new_byte_e]) {
+                    if is_punctuator(&src.code[byte_s..new_byte_e]) {
                         byte_e = new_byte_e;
                         src_iter.next();
                     } else {
@@ -468,7 +470,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                     }
                 }
 
-                let token_str = src[byte_s..byte_e].to_string();
+                let token_str = src.code[byte_s..byte_e].to_string();
 
                 token.push(Rc::new(Token {
                     common: TokenCommon {
@@ -491,7 +493,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
                     }
                 }
 
-                let token_str = src[byte_s..byte_e].to_string();
+                let token_str = src.code[byte_s..byte_e].to_string();
 
                 let kind = if is_keyword(&token_str) {
                     TokenKind::Keyword
@@ -520,7 +522,7 @@ pub fn tokenize(src: Rc<str>) -> Vec<Rc<Token>> {
         common: TokenCommon {
             token_str: String::new(),
             src: Rc::clone(&src),
-            pos: src.chars().count(),
+            pos: src.code.chars().count(),
         },
         kind: TokenKind::EOF,
     }));

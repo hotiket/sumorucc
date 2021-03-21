@@ -1,40 +1,10 @@
 use std::env;
+use std::fs::File;
+use std::io::{stdin, Read};
 use std::rc::Rc;
 
-macro_rules! error {
-    ($fmt:expr) => {
-        eprintln!($fmt);
-        std::process::exit(1);
-    };
-    ($fmt:expr, $($arg:tt)*) => {
-        eprintln!($fmt, $($arg)*);
-        std::process::exit(1);
-    };
-}
-
-macro_rules! error_at {
-    ($src:expr, $at:expr, $fmt:expr) => {
-        eprintln!("{}", $src);
-        eprint!("{}^ ", " ".repeat($at));
-        eprintln!($fmt);
-        std::process::exit(1);
-    };
-    ($src:expr, $at:expr, $fmt:expr, $($arg:tt)*) => {
-        eprintln!("{}", $src);
-        eprint!("{}^ ", " ".repeat($at));
-        eprintln!($fmt, $($arg)*);
-        std::process::exit(1);
-    };
-}
-
-macro_rules! error_tok {
-    ($tok:expr, $fmt:expr) => {
-        error_at!($tok.common.src, $tok.common.pos, $fmt);
-    };
-    ($tok:expr, $fmt:expr, $($arg:tt)*) => {
-        error_at!($tok.common.src, $tok.common.pos, $fmt, $($arg)*);
-    };
-}
+#[macro_use]
+mod error;
 
 mod codegen;
 mod ctype;
@@ -47,6 +17,38 @@ use codegen::codegen;
 use parse::parse;
 use tokenize::tokenize;
 
+pub struct Source {
+    pub path: Option<String>,
+    pub code: String,
+}
+
+fn read_input(path: &str) -> Result<Source, ()> {
+    if path == "-" {
+        // 標準入力から読み込み
+        let mut code = String::new();
+
+        match stdin().read_to_string(&mut code) {
+            Ok(_) => Ok(Source { path: None, code }),
+            Err(_) => Err(()),
+        }
+    } else {
+        // ファイルから読み込み
+        let f = File::open(path);
+        if f.is_err() {
+            return Err(());
+        }
+
+        let mut code = String::new();
+        match f.unwrap().read_to_string(&mut code) {
+            Ok(_) => Ok(Source {
+                path: Some(path.to_string()),
+                code,
+            }),
+            Err(_) => Err(()),
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -54,9 +56,12 @@ fn main() {
         error!("引数の個数が正しくありません");
     }
 
-    let src = Rc::from(args[1].clone());
+    let src = read_input(&args[1]);
+    if src.is_err() {
+        error!("ソースが読み込めません");
+    }
 
-    let token = tokenize(src);
+    let token = tokenize(Rc::from(src.unwrap()));
 
     let (node, parse_ctx) = parse(&token);
 
