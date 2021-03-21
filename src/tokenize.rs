@@ -327,6 +327,18 @@ fn read_num_escape_sequence(
     }
 }
 
+fn is_comment(src_iter: &mut Peekable<Enumerate<CharIndices>>, first: char, second: char) -> bool {
+    if let Some((_, (_, c))) = src_iter.peek() {
+        let b = (first == '/') && (*c == second);
+        if b {
+            src_iter.next();
+        }
+        b
+    } else {
+        false
+    }
+}
+
 fn read_string(
     src_iter: &mut Peekable<Enumerate<CharIndices>>,
     terminator: char,
@@ -460,26 +472,50 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
 
             // "+", "*", ";"といった記号
             _ if is_punctuator(&src.code[byte_s..byte_e]) => {
-                while let Some((_, (_, c))) = src_iter.peek() {
-                    let new_byte_e = byte_e + c.len_utf8();
-                    if is_punctuator(&src.code[byte_s..new_byte_e]) {
-                        byte_e = new_byte_e;
-                        src_iter.next();
-                    } else {
-                        break;
+                if is_comment(&mut src_iter, c, '/') {
+                    // 行コメント
+                    while let Some((_, (_, c))) = src_iter.next() {
+                        if c == '\n' {
+                            break;
+                        }
                     }
+                } else if is_comment(&mut src_iter, c, '*') {
+                    // ブロックコメント
+                    let mut has_terminator = false;
+                    let mut prev = ' ';
+                    while let Some((_, (_, c))) = src_iter.next() {
+                        if (prev == '*') && (c == '/') {
+                            has_terminator = true;
+                            break;
+                        }
+                        prev = c;
+                    }
+
+                    if !has_terminator {
+                        error_at!(src, pos, "ブロックコメントの終端が存在しません");
+                    }
+                } else {
+                    while let Some((_, (_, c))) = src_iter.peek() {
+                        let new_byte_e = byte_e + c.len_utf8();
+                        if is_punctuator(&src.code[byte_s..new_byte_e]) {
+                            byte_e = new_byte_e;
+                            src_iter.next();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    let token_str = src.code[byte_s..byte_e].to_string();
+
+                    token.push(Rc::new(Token {
+                        common: TokenCommon {
+                            token_str,
+                            src: Rc::clone(&src),
+                            pos,
+                        },
+                        kind: TokenKind::Punctuator,
+                    }));
                 }
-
-                let token_str = src.code[byte_s..byte_e].to_string();
-
-                token.push(Rc::new(Token {
-                    common: TokenCommon {
-                        token_str,
-                        src: Rc::clone(&src),
-                        pos,
-                    },
-                    kind: TokenKind::Punctuator,
-                }));
             }
 
             // 識別子とキーワード

@@ -233,4 +233,14 @@ assert 7 'int main(){return "\007"[0];}'
 assert 87 'int main(){return "\127"[0];}'
 assert 48 'int main(){return "\1500"[1];}'
 
+assert 5 'int main(){return /* 3
+// */ 5;
+}'
+assert 11 'int main(){
+// return 3;
+return 11;
+}'
+assert 7 'int main(){int x=7, *y=&x; return 49 / * y;} // */'
+assert 131 'int main(){char *x="// A", *y="/* B"; return x[3] + y[3];}'
+
 echo OK
