@@ -243,4 +243,8 @@ return 11;
 assert 7 'int main(){int x=7, *y=&x; return 49 / * y;} // */'
 assert 131 'int main(){char *x="// A", *y="/* B"; return x[3] + y[3];}'
 
+assert 10 'int main(){return ({int x=5; x*2;});}'
+assert 13 'int main(){return ({11; return 13; 17;});}'
+assert 15 'int main(){return ({({int x=3; x;}) + ({int x=5; x;}) + ({7;});});}'
+
 echo OK

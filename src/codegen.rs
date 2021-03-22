@@ -161,6 +161,9 @@ fn gen(node: &Node, ctx: &mut Context) {
                 gen(node, ctx);
             }
         }
+        NodeKind::StmtExpr(block) => {
+            gen(block, ctx);
+        }
         NodeKind::If(cond_node, then_node, else_node) => {
             let label = ctx.label;
             ctx.label += 1;

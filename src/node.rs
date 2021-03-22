@@ -9,6 +9,8 @@ pub enum NodeKind {
     // name, params(offset, type), body
     Defun(String, Vec<(usize, CType)>, Box<Node>),
     Block(Vec<Node>),
+    // GCC拡張のstatement expression
+    StmtExpr(Box<Node>),
     Return(Box<Node>),
     // cond, then, else
     If(Box<Node>, Box<Node>, Box<Node>),
@@ -121,6 +123,10 @@ impl Node {
                 for node in nodes.iter() {
                     node.debug_print_impl(depth + 1);
                 }
+            }
+            NodeKind::StmtExpr(block) => {
+                eprintln!("{}StmtExpr", head);
+                block.debug_print_impl(depth + 1);
             }
             NodeKind::Return(node) => {
                 eprintln!("{}Return", head);

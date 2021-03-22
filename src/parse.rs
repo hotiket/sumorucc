@@ -36,11 +36,11 @@ fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
 }
 
 // type_specifier := "int" | "char"
-fn type_specifier(stream: &mut TokenStream) -> Option<CType> {
-    if stream.consume_keyword("int").is_some() {
-        Some(CType::Integer(Integer::Int))
-    } else if stream.consume_keyword("char").is_some() {
-        Some(CType::Integer(Integer::Char))
+fn type_specifier(stream: &mut TokenStream) -> Option<(CType, Rc<Token>)> {
+    if let Some(token) = stream.consume_keyword("int") {
+        Some((CType::Integer(Integer::Int), token))
+    } else if let Some(token) = stream.consume_keyword("char") {
+        Some((CType::Integer(Integer::Char), token))
     } else {
         None
     }
@@ -67,8 +67,7 @@ fn is_function(stream: &mut TokenStream) -> bool {
 
 // function_definition := type_specifier function_declarator "{" compound_stmt
 fn function_definition(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
-    let ctype = type_specifier(stream);
-    if ctype.is_none() {
+    if type_specifier(stream).is_none() {
         error_tok!(stream.current().unwrap(), "型ではありません");
     }
 
@@ -139,11 +138,11 @@ fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Para
     }
 
     loop {
-        let ctype = type_specifier(stream);
-        if ctype.is_none() {
+        let type_spec = type_specifier(stream);
+        if type_spec.is_none() {
             error_tok!(stream.current().unwrap(), "型ではありません");
         }
-        let ctype = ctype.unwrap();
+        let ctype = type_spec.unwrap().0;
 
         let (param_token, param_name) = stream.expect_identifier();
 
@@ -267,8 +266,11 @@ fn compound_stmt(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
 
 // declaration := type_specifier init_declarator
 fn declaration(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<Vec<Node>> {
-    if let Some(ctype) = type_specifier(stream) {
-        let init_nodes = init_declarator(stream, ctx, &ctype);
+    if let Some((ctype, token)) = type_specifier(stream) {
+        let mut init_nodes = init_declarator(stream, ctx, &ctype);
+        // ({int x=1;})のようなstatement expressionの値がintに
+        // ならないように、最後にCType::Statementとなるノードを入れる。
+        init_nodes.push(Node::null_statement(token));
         Some(init_nodes)
     } else {
         None
@@ -641,12 +643,18 @@ fn postfix(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     node
 }
 
-// primary := "(" expr ")" | num | str | ident call_args?
+// primary := "(" "{" compound_stmt ")" | "(" expr ")" | num | str | ident call_args?
 fn primary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
-    if stream.consume_punctuator("(").is_some() {
-        let node = expr(stream, ctx);
-        stream.expect_punctuator(")");
-        node
+    if let Some(token) = stream.consume_punctuator("(") {
+        if stream.consume_punctuator("{").is_some() {
+            let block = Box::new(compound_stmt(stream, ctx));
+            stream.expect_punctuator(")");
+            Node::new(token, NodeKind::StmtExpr(block))
+        } else {
+            let node = expr(stream, ctx);
+            stream.expect_punctuator(")");
+            node
+        }
     } else if let Some((token, n)) = stream.consume_number() {
         Node::new(token, NodeKind::Num(n))
     } else if let Some((token, s)) = stream.consume_string() {

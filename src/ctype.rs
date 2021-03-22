@@ -29,7 +29,8 @@ impl CType {
             return Ok(ctype);
         }
 
-        let invalid_operand = "無効なオペランドです";
+        const ERROR_INVALID_OPERAND: &str = "無効なオペランドです";
+        const ERROR_STMT_EXPR_VOID: &str = "voidを返すStatement Expressionはサポートしていません";
 
         match kind {
             NodeKind::Defun(..)
@@ -37,6 +38,21 @@ impl CType {
             | NodeKind::Return(..)
             | NodeKind::If(..)
             | NodeKind::For(..) => Ok(Self::Statement),
+            NodeKind::StmtExpr(block) => {
+                if let NodeKind::Block(body) = &block.kind {
+                    if let Some(last) = body.last() {
+                        if last.ctype == Self::Statement {
+                            Err(ERROR_STMT_EXPR_VOID)
+                        } else {
+                            Ok(last.ctype.clone())
+                        }
+                    } else {
+                        Err(ERROR_STMT_EXPR_VOID)
+                    }
+                } else {
+                    unreachable!("StmtExprの要素がBlockではありません");
+                }
+            }
             NodeKind::Assign(lhs, rhs) => match (&lhs.ctype, &rhs.ctype) {
                 (Self::Integer(_), Self::Integer(_)) => Ok(lhs.ctype.clone()),
                 (Self::Pointer(_), Self::Pointer(_)) if lhs.ctype == rhs.ctype => {
@@ -46,7 +62,7 @@ impl CType {
                     Self::array_to_ptr(rhs);
                     Ok(lhs.ctype.clone())
                 }
-                _ => Err(invalid_operand),
+                _ => Err(ERROR_INVALID_OPERAND),
             },
             NodeKind::Eq(..) | NodeKind::Neq(..) | NodeKind::LT(..) | NodeKind::LTE(..) => {
                 Ok(Self::Integer(Integer::Int))
@@ -73,22 +89,22 @@ impl CType {
                     Self::array_to_ptr(rhs);
                     Ok(CType::Pointer(base))
                 }
-                _ => Err(invalid_operand),
+                _ => Err(ERROR_INVALID_OPERAND),
             },
             NodeKind::Mul(lhs, rhs) | NodeKind::Div(lhs, rhs) => match (&lhs.ctype, &rhs.ctype) {
                 (Self::Integer(_), Self::Integer(_)) => Ok(Self::Integer(Integer::Int)),
-                _ => Err(invalid_operand),
+                _ => Err(ERROR_INVALID_OPERAND),
             },
             NodeKind::Addr(operand) => match &operand.kind {
                 NodeKind::LVar(..) | NodeKind::GVar(..) | NodeKind::Deref(..) => {
                     let base = Box::new(operand.ctype.clone());
                     Ok(Self::Pointer(base))
                 }
-                _ => Err(invalid_operand),
+                _ => Err(ERROR_INVALID_OPERAND),
             },
             NodeKind::Deref(operand) => match &operand.ctype {
                 Self::Pointer(base) => Ok(*base.clone()),
-                _ => Err(invalid_operand),
+                _ => Err(ERROR_INVALID_OPERAND),
             },
             NodeKind::Num(..) => Ok(Self::Integer(Integer::Int)),
             NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => Ok(ctype.clone()),
