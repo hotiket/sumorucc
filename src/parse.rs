@@ -71,7 +71,7 @@ fn function_definition(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node
         error_tok!(stream.current().unwrap(), "型ではありません");
     }
 
-    let (token, name, params) = function_declarator(stream);
+    let (token, name, params) = function_declarator(stream, ctx);
 
     if params.len() > 6 {
         error_tok!(token, "引数が6つを超える関数定義はサポートしていません");
@@ -125,8 +125,11 @@ impl Parameter {
     }
 }
 
-// function_declarator := ident "(" (type_specifier ident ("," type_specifier ident)*)? ")"
-fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Parameter>) {
+// function_declarator := ident "(" (type_specifier declarator ("," type_specifier declarator)*)? ")"
+fn function_declarator(
+    stream: &mut TokenStream,
+    ctx: &mut ParseContext,
+) -> (Rc<Token>, String, Vec<Parameter>) {
     let (func_token, func_name) = stream.expect_identifier();
 
     stream.expect_punctuator("(");
@@ -142,11 +145,11 @@ fn function_declarator(stream: &mut TokenStream) -> (Rc<Token>, String, Vec<Para
         if type_spec.is_none() {
             error_tok!(stream.current().unwrap(), "型ではありません");
         }
-        let ctype = type_spec.unwrap().0;
+        let base = type_spec.unwrap().0;
 
-        let (param_token, param_name) = stream.expect_identifier();
+        let (name, ctype, token) = declarator(stream, ctx, &base);
 
-        params.push(Parameter::new(param_token, param_name, ctype));
+        params.push(Parameter::new(token, name, ctype));
 
         if stream.consume_punctuator(",").is_none() {
             break;
@@ -286,16 +289,13 @@ fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CTyp
     }
 
     loop {
-        let (ident_name, ident_token) = declarator(stream, ctx, base);
+        let (ident, ctype, ident_token) = declarator(stream, ctx, base);
+
+        if let Err(msg) = ctx.add_var(&ident, ctype.clone()) {
+            error_tok!(&ident_token, "{}", msg);
+        }
 
         if let Some(assign_token) = stream.consume_punctuator("=") {
-            // 変数定義してるのでunwrapして問題ない
-            let var_kind = ctx.find_var(&ident_name).unwrap();
-            let ctype = match &var_kind {
-                NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => ctype.clone(),
-                _ => unreachable!(),
-            };
-
             // 配列だったらinitializerが"{"で始まるかチェックする
             if matches!(&ctype, CType::Array(..)) {
                 let state = stream.save();
@@ -305,10 +305,11 @@ fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CTyp
 
             let initializer_nodes = initializer(stream, ctx, &ctype, &ident_token);
 
-            match var_kind {
+            // 変数定義してるのでunwrapして問題ない
+            match ctx.find_var(&ident).unwrap() {
                 NodeKind::LVar(..) => {
                     let new_init_nodes = set_init_val_to_lvar(
-                        &ident_name,
+                        &ident,
                         ident_token,
                         ctype,
                         initializer_nodes,
@@ -317,7 +318,7 @@ fn init_declarator(stream: &mut TokenStream, ctx: &mut ParseContext, base: &CTyp
                     );
                     init_nodes.extend(new_init_nodes);
                 }
-                NodeKind::GVar(..) => set_init_val_to_gvar(&ident_name, initializer_nodes, ctx),
+                NodeKind::GVar(..) => set_init_val_to_gvar(&ident, initializer_nodes, ctx),
                 _ => unreachable!(),
             }
         }
@@ -337,7 +338,7 @@ fn declarator(
     stream: &mut TokenStream,
     ctx: &mut ParseContext,
     base: &CType,
-) -> (String, Rc<Token>) {
+) -> (String, CType, Rc<Token>) {
     let mut ctype = base.clone();
     while stream.consume_punctuator("*").is_some() {
         ctype = CType::Pointer(Box::new(ctype));
@@ -367,11 +368,7 @@ fn declarator(
         ctype = CType::Array(Box::new(ctype), n);
     }
 
-    if let Err(msg) = ctx.add_var(&name, ctype) {
-        error_tok!(&token, "{}", msg);
-    }
-
-    (name, token)
+    (name, ctype, token)
 }
 
 // initializer := expr | "{" initializer ("," initializer)* ","? "}"

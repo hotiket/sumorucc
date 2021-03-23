@@ -247,4 +247,7 @@ assert 10 'int main(){return ({int x=5; x*2;});}'
 assert 13 'int main(){return ({11; return 13; 17;});}'
 assert 15 'int main(){return ({({int x=3; x;}) + ({int x=5; x;}) + ({7;});});}'
 
+assert 57 'int fst(int *p){return p[0];} int snd(char *p){return p[1];} int main(){int v[2]={-9,9}; return fst(v) + snd("ABC");}'
+assert 21 'int mul_3(int *p){*p=*p*3; return 0;} int main(){int x=7; mul_3(&x); return x;}'
+
 echo OK

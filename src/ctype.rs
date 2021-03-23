@@ -108,7 +108,15 @@ impl CType {
             },
             NodeKind::Num(..) => Ok(Self::Integer(Integer::Int)),
             NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => Ok(ctype.clone()),
-            NodeKind::Call(..) => Ok(Self::Integer(Integer::Int)),
+            NodeKind::Call(_, ref mut args) => {
+                for arg in args.iter_mut() {
+                    if matches!(arg.ctype, Self::Array(..)) {
+                        Self::array_to_ptr(arg);
+                    }
+                }
+
+                Ok(Self::Integer(Integer::Int))
+            }
         }
     }
 
