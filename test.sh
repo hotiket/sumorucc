@@ -20,7 +20,7 @@ run_test() {
 	src="$1"
 	echo [`basename "$src"`]
 
-	gcc -xc "$src" -E -P -C | target/debug/rcc - >tmp.s
+	gcc -xc "$src" -E -P -C | target/debug/sumorucc - >tmp.s
 	[ $? -ne 0 ] && error_exit 1
 
 	gcc -no-pie -o tmp tmp.s "$TEST_FN_FILE"
