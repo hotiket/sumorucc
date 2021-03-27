@@ -12,6 +12,7 @@ mod node;
 mod parse;
 mod parse_context;
 mod tokenize;
+mod util;
 
 use codegen::codegen;
 use parse::parse;

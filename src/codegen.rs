@@ -3,6 +3,7 @@ use std::fmt;
 use super::ctype::{CType, Integer};
 use super::node::{Node, NodeKind};
 use super::parse_context::{GVar, ParseContext, Str};
+use super::util::align_to;
 
 macro_rules! code {
     ($fmt:expr) => {
@@ -383,7 +384,7 @@ fn function_header(name: &str, ctx: &mut Context) {
 fn prologue(mut stack_size: usize, params: &[(usize, CType)], ctx: &mut Context) {
     // 関数を呼ぶ時のRSPのアライメントをしやすくするために
     // スタックサイズを16の倍数にする。
-    stack_size = (stack_size + 16 - 1) / 16 * 16;
+    stack_size = align_to(stack_size, 16);
 
     push(Register::RBP, ctx);
     code!("mov %rsp, %rbp");
