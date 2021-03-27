@@ -84,27 +84,97 @@ impl<'vec> TokenStream<'vec> {
         self.token.get(self.current).map(|token| Rc::clone(token))
     }
 
-    // 次のトークンが期待している記号のときには、
-    // そのトークンをSomeで包んで返し、トークンを1つ読み進める。
-    // それ以外の場合にはNoneを返す。
-    pub fn consume_punctuator(&mut self, op: &str) -> Option<Rc<Token>> {
+    // 次のトークンが期待している記号のときには、trueを返す。
+    // それ以外の場合にはfalseを返す。
+    pub fn is_punctuator(&self, op: &str) -> bool {
         match self.peek().as_deref() {
             Some(Token {
                 common,
                 kind: TokenKind::Punctuator,
-            }) if common.token_str == op => self.next(),
+            }) => common.token_str == op,
+            _ => false,
+        }
+    }
+
+    fn is_number_impl(&self) -> Option<isize> {
+        match self.peek().as_deref() {
+            Some(Token {
+                kind: TokenKind::Num(n),
+                ..
+            }) => Some(*n),
             _ => None,
+        }
+    }
+
+    // 次のトークンが数値の場合、trueを返す。
+    // それ以外の場合にはfalseを返す。
+    #[allow(dead_code)]
+    pub fn is_number(&self) -> bool {
+        self.is_number_impl().is_some()
+    }
+
+    fn is_string_impl(&self) -> Option<Vec<u8>> {
+        match self.peek().as_deref() {
+            Some(Token {
+                kind: TokenKind::Str(s),
+                ..
+            }) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    // 次のトークンが文字列の場合、trueを返す。
+    // それ以外の場合にはfalseを返す。
+    #[allow(dead_code)]
+    pub fn is_string(&self) -> bool {
+        self.is_string_impl().is_some()
+    }
+
+    fn is_identifier_impl(&self) -> Option<String> {
+        match self.peek().as_deref() {
+            Some(Token {
+                common,
+                kind: TokenKind::Ident,
+            }) => Some(common.token_str.clone()),
+            _ => None,
+        }
+    }
+
+    // 次のトークンが識別子の場合、trueを返す。
+    // それ以外の場合にはfalseを返す。
+    #[allow(dead_code)]
+    fn is_identifier(&self) -> bool {
+        self.is_identifier_impl().is_some()
+    }
+
+    // 次のトークンが期待しているキーワードのときには、trueを返す。
+    // それ以外の場合にはfalseを返す。
+    pub fn is_keyword(&self, keyword: &str) -> bool {
+        match self.peek().as_deref() {
+            Some(Token {
+                common,
+                kind: TokenKind::Keyword,
+            }) => common.token_str == keyword,
+            _ => false,
+        }
+    }
+
+    // 次のトークンが期待している記号のときには、
+    // そのトークンをSomeで包んで返し、トークンを1つ読み進める。
+    // それ以外の場合にはNoneを返す。
+    pub fn consume_punctuator(&mut self, op: &str) -> Option<Rc<Token>> {
+        if self.is_punctuator(op) {
+            self.next()
+        } else {
+            None
         }
     }
 
     // 次のトークンが数値の場合、そのトークンと数値をSomeで包んで返し
     // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
     pub fn consume_number(&mut self) -> Option<(Rc<Token>, isize)> {
-        match self.peek().as_deref() {
-            Some(Token {
-                kind: TokenKind::Num(n),
-                ..
-            }) => Some((self.next().unwrap(), *n)),
+        match self.is_number_impl() {
+            Some(n) => Some((self.next().unwrap(), n)),
             _ => None,
         }
     }
@@ -112,11 +182,8 @@ impl<'vec> TokenStream<'vec> {
     // 次のトークンが文字列の場合、そのトークンと文字列をSomeで包んで返し
     // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
     pub fn consume_string(&mut self) -> Option<(Rc<Token>, Vec<u8>)> {
-        match self.peek().as_deref() {
-            Some(Token {
-                kind: TokenKind::Str(s),
-                ..
-            }) => Some((self.next().unwrap(), s.clone())),
+        match self.is_string_impl() {
+            Some(s) => Some((self.next().unwrap(), s)),
             _ => None,
         }
     }
@@ -124,11 +191,8 @@ impl<'vec> TokenStream<'vec> {
     // 次のトークンが識別子の場合、そのトークンと識別子をSomeで包んで返し
     // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
     pub fn consume_identifier(&mut self) -> Option<(Rc<Token>, String)> {
-        match self.peek().as_deref() {
-            Some(Token {
-                common,
-                kind: TokenKind::Ident,
-            }) => Some((self.next().unwrap(), common.token_str.clone())),
+        match self.is_identifier_impl() {
+            Some(ident) => Some((self.next().unwrap(), ident)),
             _ => None,
         }
     }
@@ -136,13 +200,10 @@ impl<'vec> TokenStream<'vec> {
     // 次のトークンが期待しているキーワードの場合、そのトークンを
     // Someで包んで返しトークンを1つ読み進める。それ以外の場合にはNoneを返す。
     pub fn consume_keyword(&mut self, keyword: &str) -> Option<Rc<Token>> {
-        match self.peek().as_deref() {
-            Some(Token {
-                common,
-                kind: TokenKind::Keyword,
-                ..
-            }) if common.token_str == keyword => self.next(),
-            _ => None,
+        if self.is_keyword(keyword) {
+            self.next()
+        } else {
+            None
         }
     }
 
