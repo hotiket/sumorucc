@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use super::node::{Node, NodeKind};
 use super::tokenize::Token;
+use super::util::align_to;
 
 #[derive(Clone, PartialEq)]
 pub enum Integer {
@@ -12,10 +13,18 @@ pub enum Integer {
 }
 
 #[derive(Clone, PartialEq)]
+pub struct Member {
+    name: String,
+    ctype: CType,
+    offset: usize,
+}
+
+#[derive(Clone, PartialEq)]
 pub enum CType {
     Integer(Integer),
     Pointer(Box<Self>),
     Array(Box<Self>, usize),
+    Struct(Option<String>, Vec<Member>),
     Statement,
 }
 
@@ -120,6 +129,34 @@ impl CType {
         }
     }
 
+    pub fn new_struct(
+        name: Option<String>,
+        members: Vec<(String, CType)>,
+    ) -> Result<Self, &'static str> {
+        if members.is_empty() {
+            return Err("空の構造体は定義できません");
+        }
+
+        let mut members_ = Vec::<Member>::new();
+        let mut current_offset = 0;
+
+        for (name, ctype) in members.into_iter() {
+            if members_.iter().any(|m| m.name == name) {
+                return Err("名前が重複しているメンバーがあります");
+            }
+
+            let offset = align_to(current_offset, ctype.alignof());
+            current_offset = offset + ctype.size();
+            members_.push(Member {
+                name,
+                ctype,
+                offset,
+            });
+        }
+
+        Ok(Self::Struct(name, members_))
+    }
+
     // ポインタ同士の減算用の処理。減算結果をポインタが指す
     // 型のサイズで割り、要素数を返すようにkindを置き換える。
     fn new_ptr_sub(token: &Rc<Token>, kind: &mut NodeKind) -> Option<Self> {
@@ -175,6 +212,14 @@ impl CType {
             Self::Integer(Integer::Int) => 8,
             Self::Pointer(_) => 8,
             Self::Array(base, size) => base.size() * size,
+            Self::Struct(_, members) => {
+                if let Some(m) = members.last() {
+                    let raw_size = m.offset + m.ctype.size();
+                    align_to(raw_size, self.alignof())
+                } else {
+                    unreachable!("空の構造体は定義できません");
+                }
+            }
             Self::Statement => 0,
         }
     }
@@ -183,8 +228,19 @@ impl CType {
     // 例えば、int[2][3]なら6, intなら1。
     pub fn flat_len(&self) -> usize {
         match self {
-            Self::Integer(_) | Self::Pointer(_) => 1,
+            Self::Integer(_) | Self::Pointer(_) | Self::Struct(..) => 1,
             Self::Array(base, size) => base.flat_len() * size,
+            Self::Statement => 0,
+        }
+    }
+
+    pub fn alignof(&self) -> usize {
+        match self {
+            Self::Integer(_) | Self::Pointer(_) => self.size(),
+            Self::Array(base, _) => base.alignof(),
+            Self::Struct(_, members) => {
+                members.iter().map(|m| m.ctype.alignof()).max().unwrap_or(0)
+            }
             Self::Statement => 0,
         }
     }
@@ -251,6 +307,26 @@ impl fmt::Display for CType {
             Self::Integer(Integer::Int) => write!(f, "int"),
             Self::Pointer(base) => write!(f, "{}*", base),
             Self::Array(base, size) => write!(f, "{}[{}]", base, size),
+            Self::Struct(name, members) => {
+                if let Some(name) = name {
+                    let _ = write!(f, "struct {} {{", name);
+                } else {
+                    let _ = write!(f, "struct {{");
+                }
+
+                let mut i = members.iter().peekable();
+                while let Some(m) = i.next() {
+                    let _ = write!(
+                        f,
+                        "{} {};{}",
+                        m.ctype,
+                        m.name,
+                        if i.peek().is_some() { " " } else { "" }
+                    );
+                }
+
+                write!(f, "}}")
+            }
             Self::Statement => write!(f, "Statement"),
         }
     }

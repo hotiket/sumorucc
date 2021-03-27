@@ -22,7 +22,7 @@ fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
     let mut nodes = Vec::new();
 
     while !stream.at_eof() {
-        if is_function(stream) {
+        if is_function(stream, ctx) {
             nodes.push(function_definition(stream, ctx));
         } else if declaration(stream, ctx).is_none() {
             error_tok!(
@@ -35,39 +35,105 @@ fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
     nodes
 }
 
-// type_specifier := "int" | "char"
-fn type_specifier(stream: &mut TokenStream) -> Option<(CType, Rc<Token>)> {
+// type_specifier := "int" | "char" | struct_specifier
+fn type_specifier(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<(CType, Rc<Token>)> {
     if let Some(token) = stream.consume_keyword("int") {
         Some((CType::Integer(Integer::Int), token))
     } else if let Some(token) = stream.consume_keyword("char") {
         Some((CType::Integer(Integer::Char), token))
     } else {
+        struct_specifier(stream, ctx)
+    }
+}
+
+// struct_specifier := "struct" ( ident? ("{" struct_declaration "}") | ident )
+fn struct_specifier(
+    stream: &mut TokenStream,
+    ctx: &mut ParseContext,
+) -> Option<(CType, Rc<Token>)> {
+    if let Some(token) = stream.consume_keyword("struct") {
+        let tag = stream.consume_identifier().map(|ret| ret.1);
+
+        if stream.consume_punctuator("{").is_some() {
+            let members = struct_declaration(stream, ctx);
+
+            stream.expect_punctuator("}");
+
+            if members.is_empty() {
+                error_tok!(token, "空の構造体は定義できません");
+            }
+
+            match CType::new_struct(tag, members) {
+                Ok(ctype) => {
+                    if let Err(msg) = ctx.add_struct(ctype.clone()) {
+                        error_tok!(token, "{}", msg);
+                    }
+                    Some((ctype, token))
+                }
+                Err(msg) => {
+                    error_tok!(token, "{}", msg);
+                }
+            }
+        } else {
+            if tag.is_none() {
+                error_tok!(token, "構造体のタグが指定されていません");
+            }
+
+            if let Some(ctype) = ctx.find_struct(tag.as_ref().unwrap()) {
+                Some((ctype, token))
+            } else {
+                error_tok!(token, "構造体{}の定義が存在しません", tag.unwrap());
+            }
+        }
+    } else {
         None
     }
 }
 
+// struct_declaration := (type_specifier declarator ";")*
+fn struct_declaration(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<(String, CType)> {
+    let mut members = Vec::new();
+
+    loop {
+        let base = type_specifier(stream, ctx);
+        if base.is_none() {
+            break;
+        }
+        let base = base.unwrap().0;
+
+        let (name, ctype, _) = declarator(stream, ctx, &base);
+        members.push((name, ctype));
+
+        stream.expect_punctuator(";");
+    }
+
+    members
+}
+
 // type_specifier "*"* ident "(" ならば真を返す
 // それ以外は偽を返す
-fn is_function(stream: &mut TokenStream) -> bool {
+fn is_function(stream: &mut TokenStream, ctx: &mut ParseContext) -> bool {
     let mut result = false;
 
-    let state = stream.save();
+    let stream_state = stream.save();
+    let ctx_state = ctx.save();
 
-    if type_specifier(stream).is_some() {
+    if type_specifier(stream, ctx).is_some() {
         while stream.consume_punctuator("*").is_some() {}
         if stream.consume_identifier().is_some() && stream.consume_punctuator("(").is_some() {
             result = true;
         }
     }
 
-    stream.restore(state);
+    ctx.restore(ctx_state);
+    stream.restore(stream_state);
 
     result
 }
 
 // function_definition := type_specifier function_declarator "{" compound_stmt
 fn function_definition(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
-    if type_specifier(stream).is_none() {
+    if type_specifier(stream, ctx).is_none() {
         error_tok!(stream.current().unwrap(), "型ではありません");
     }
 
@@ -141,7 +207,7 @@ fn function_declarator(
     }
 
     loop {
-        let type_spec = type_specifier(stream);
+        let type_spec = type_specifier(stream, ctx);
         if type_spec.is_none() {
             error_tok!(stream.current().unwrap(), "型ではありません");
         }
@@ -269,7 +335,7 @@ fn compound_stmt(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
 
 // declaration := type_specifier init_declarator
 fn declaration(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<Vec<Node>> {
-    if let Some((ctype, token)) = type_specifier(stream) {
+    if let Some((ctype, token)) = type_specifier(stream, ctx) {
         let mut init_nodes = init_declarator(stream, ctx, &ctype);
         // ({int x=1;})のようなstatement expressionの値がintに
         // ならないように、最後にCType::Statementとなるノードを入れる。

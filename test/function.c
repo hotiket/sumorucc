@@ -13,6 +13,10 @@ int fst(int *p){return p[0];}
 int snd(char *p){return p[1];}
 int mul_3(int *p){*p=*p*3; return 0;}
 
+struct G0 {char x;};
+
+int arg_struct_fn(struct G0 *p){return 1;}
+
 int main()
 {
 	ASSERT(3, ret3());
@@ -32,6 +36,8 @@ int main()
 
 	ASSERT(57, ({int v[2]={-9,9}; fst(v) + snd("ABC");}));
 	ASSERT(21, ({int x=7; mul_3(&x); x;}));
+
+	ASSERT(1, ({struct G0 x; arg_struct_fn(&x);}));
 
 	return 0;
 }
