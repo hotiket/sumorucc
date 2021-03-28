@@ -113,6 +113,13 @@ impl CType {
             },
             NodeKind::Deref(operand) => match &operand.ctype {
                 Self::Pointer(base) => Ok(*base.clone()),
+                Self::Array(base, _) => {
+                    // operandを借用したままだとarray_to_ptrが呼べないので
+                    // ここでCTypeをclone()することで借用を断つ。
+                    let ctype = *base.clone();
+                    Self::array_to_ptr(operand);
+                    Ok(ctype)
+                }
                 _ => Err(ERROR_INVALID_OPERAND),
             },
             NodeKind::Member(..) => {

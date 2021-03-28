@@ -687,7 +687,7 @@ fn unary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     }
 }
 
-// postfix := primary ( "[" expr "]" | "." ident )*
+// postfix := primary ( "[" expr "]" | "." ident | "->" ident )*
 fn postfix(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     let mut node = primary(stream, ctx);
 
@@ -705,6 +705,11 @@ fn postfix(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
         } else if stream.consume_punctuator(".").is_some() {
             let (mem_token, mem_name) = stream.expect_identifier();
 
+            node = Node::member(mem_token, node, &mem_name);
+        } else if let Some(arrow_token) = stream.consume_punctuator("->") {
+            let (mem_token, mem_name) = stream.expect_identifier();
+
+            node = Node::new(arrow_token, NodeKind::Deref(Box::new(node)));
             node = Node::member(mem_token, node, &mem_name);
         } else {
             break;

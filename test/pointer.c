@@ -73,5 +73,10 @@ int main()
 	ASSERT(1000, ({struct {struct {int y[2];} x[2];} v[2][2]; int i,j,k,l; for(i=0;i<2;i=i+1) for(j=0;j<2;j=j+1) for(k=0;k<2;k=k+1) for(l=0;l<2;l=l+1) v[i][j].x[k].y[l]=i*1000+j*100+k*10+l; v[1][0].x[0].y[0];}));
 	ASSERT(1111, ({struct {struct {int y[2];} x[2];} v[2][2]; int i,j,k,l; for(i=0;i<2;i=i+1) for(j=0;j<2;j=j+1) for(k=0;k<2;k=k+1) for(l=0;l<2;l=l+1) v[i][j].x[k].y[l]=i*1000+j*100+k*10+l; v[1][1].x[1].y[1];}));
 
+	ASSERT(7, ({struct {struct X{int i;} *p[2];} a[2]; struct X x,y; x.i=3; y.i=5; a[0].p[0]=&x; a[0].p[1]=&y; a[0].p[0]->i=7; x.i;}));
+	ASSERT(11, ({struct {struct X{int i;} *p[2];} a[2]; struct X x,y; x.i=3; y.i=5; a[0].p[0]=&x; a[0].p[1]=&y; a[0].p[1]->i=11; y.i;}));
+	ASSERT(13, ({struct {struct X{int i;} *p[2];} a[2]; struct X x,y; x.i=3; y.i=5; (a+1)->p[0]=&x; a[0].p[1]=&y; a[1].p[0]->i=13; x.i;}));
+	ASSERT(17, ({struct {struct X{int i;} *p[2];} a[2]; struct X x,y; x.i=3; y.i=5; a[0].p[0]=&x; a->p[1]=&y; a[0].p[1]->i=17; y.i;}));
+
 	return 0;
 }

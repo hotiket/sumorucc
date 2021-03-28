@@ -41,5 +41,9 @@ int main()
 	ASSERT(7, x.inner.x);
 	ASSERT(11, x.inner.y);
 
+	ASSERT(5, ({struct {struct X{int i;} *xp;} a,*p=&a; struct X x; x.i=5; a.xp=&x; a.xp->i;}));
+	ASSERT(7, ({struct {struct X{int i;} *xp;} a,*p=&a; struct X x; x.i=5; a.xp=&x; a.xp->i=7; x.i;}));
+	ASSERT(11, ({struct {struct X{int i;} *xp;} a,*p=&a; struct X x; x.i=5; a.xp=&x; p->xp->i=11; x.i;}));
+
 	return 0;
 }
