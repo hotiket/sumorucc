@@ -271,7 +271,7 @@ impl<'vec> TokenStream<'vec> {
 fn is_punctuator(test_op: &str) -> bool {
     let symbols = [
         "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}", "&", ",",
-        "[", "]",
+        "[", "]", ".",
     ];
 
     for symbol in &symbols {

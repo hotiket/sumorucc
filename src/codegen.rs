@@ -136,6 +136,10 @@ fn gen_lval(node: &Node, ctx: &mut Context) {
         NodeKind::Deref(operand) => {
             gen(operand, ctx);
         }
+        NodeKind::Member(base, offset) => {
+            gen_lval(base, ctx);
+            code!("add ${}, %rax", offset);
+        }
         _ => {
             error_tok!(node.token, "代入の左辺値が変数ではありません");
         }
@@ -274,6 +278,11 @@ fn gen(node: &Node, ctx: &mut Context) {
             gen_lval(node, ctx);
             let base = operand.ctype.base().unwrap();
             gen_load(&base);
+        }
+        NodeKind::Member(base, offset) => {
+            gen_lval(base, ctx);
+            code!("add ${}, %rax", offset);
+            gen_load(&node.ctype);
         }
         NodeKind::Num(n) => {
             code!("mov ${}, %rax", n);

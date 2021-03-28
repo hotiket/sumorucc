@@ -68,5 +68,10 @@ int main()
 	ASSERT(4, (g8[0][0]==3)+(g8[0][1]==2)+(g8[1][0]==g7)+(g8[1][1]==0));
 	ASSERT(7, ({char x=1; int v[2]={3,7}; v[x];}));
 
+	ASSERT(0, ({struct {struct {int y[2];} x[2];} v[2][2]; int i,j,k,l; for(i=0;i<2;i=i+1) for(j=0;j<2;j=j+1) for(k=0;k<2;k=k+1) for(l=0;l<2;l=l+1) v[i][j].x[k].y[l]=i*1000+j*100+k*10+l; v[0][0].x[0].y[0];}));
+	ASSERT(101, ({struct {struct {int y[2];} x[2];} v[2][2]; int i,j,k,l; for(i=0;i<2;i=i+1) for(j=0;j<2;j=j+1) for(k=0;k<2;k=k+1) for(l=0;l<2;l=l+1) v[i][j].x[k].y[l]=i*1000+j*100+k*10+l; v[0][1].x[0].y[1];}));
+	ASSERT(1000, ({struct {struct {int y[2];} x[2];} v[2][2]; int i,j,k,l; for(i=0;i<2;i=i+1) for(j=0;j<2;j=j+1) for(k=0;k<2;k=k+1) for(l=0;l<2;l=l+1) v[i][j].x[k].y[l]=i*1000+j*100+k*10+l; v[1][0].x[0].y[0];}));
+	ASSERT(1111, ({struct {struct {int y[2];} x[2];} v[2][2]; int i,j,k,l; for(i=0;i<2;i=i+1) for(j=0;j<2;j=j+1) for(k=0;k<2;k=k+1) for(l=0;l<2;l=l+1) v[i][j].x[k].y[l]=i*1000+j*100+k*10+l; v[1][1].x[1].y[1];}));
+
 	return 0;
 }

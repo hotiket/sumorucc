@@ -687,20 +687,28 @@ fn unary(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     }
 }
 
-// postfix := primary ("[" expr "]")*
+// postfix := primary ( "[" expr "]" | "." ident )*
 fn postfix(stream: &mut TokenStream, ctx: &mut ParseContext) -> Node {
     let mut node = primary(stream, ctx);
 
-    while let Some(bracket_token) = stream.consume_punctuator("[") {
-        let index = Box::new(expr(stream, ctx));
+    loop {
+        if let Some(bracket_token) = stream.consume_punctuator("[") {
+            let index = Box::new(expr(stream, ctx));
 
-        node = Node::new(
-            Rc::clone(&bracket_token),
-            NodeKind::Add(Box::new(node), index),
-        );
-        node = Node::new(bracket_token, NodeKind::Deref(Box::new(node)));
+            node = Node::new(
+                Rc::clone(&bracket_token),
+                NodeKind::Add(Box::new(node), index),
+            );
+            node = Node::new(bracket_token, NodeKind::Deref(Box::new(node)));
 
-        stream.expect_punctuator("]");
+            stream.expect_punctuator("]");
+        } else if stream.consume_punctuator(".").is_some() {
+            let (mem_token, mem_name) = stream.expect_identifier();
+
+            node = Node::member(mem_token, node, &mem_name);
+        } else {
+            break;
+        }
     }
 
     node

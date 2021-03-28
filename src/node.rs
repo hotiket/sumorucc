@@ -27,6 +27,8 @@ pub enum NodeKind {
     Div(Box<Node>, Box<Node>),
     Addr(Box<Node>),
     Deref(Box<Node>),
+    // struct, offset
+    Member(Box<Node>, usize),
     Num(isize),
     // name, type, offset
     LVar(String, CType, usize),
@@ -68,6 +70,19 @@ impl Node {
         }
 
         Self::new(token, var_kind.unwrap())
+    }
+
+    pub fn member(token: Rc<Token>, node: Self, name: &str) -> Self {
+        let (ctype, offset) = match node.ctype.get_member(name) {
+            Ok(mem) => mem,
+            Err(msg) => {
+                error_tok!(token, "{}", msg);
+            }
+        };
+
+        let kind = NodeKind::Member(Box::new(node), offset);
+
+        Self { token, kind, ctype }
     }
 
     pub fn to_isize(&self) -> Option<isize> {
@@ -221,6 +236,10 @@ impl Node {
             }
             NodeKind::Deref(node) => {
                 eprintln!("{}Deref", head);
+                node.debug_print_impl(depth + 1);
+            }
+            NodeKind::Member(node, offset) => {
+                eprintln!("{}Member({})", head, offset);
                 node.debug_print_impl(depth + 1);
             }
             NodeKind::Num(n) => {

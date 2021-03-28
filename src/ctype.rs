@@ -115,6 +115,9 @@ impl CType {
                 Self::Pointer(base) => Ok(*base.clone()),
                 _ => Err(ERROR_INVALID_OPERAND),
             },
+            NodeKind::Member(..) => {
+                unreachable!("MemberはNode側でCType生成しているのでここには来ないはず")
+            }
             NodeKind::Num(..) => Ok(Self::Integer(Integer::Int)),
             NodeKind::LVar(_, ctype, _) | NodeKind::GVar(_, ctype) => Ok(ctype.clone()),
             NodeKind::Call(_, ref mut args) => {
@@ -155,6 +158,20 @@ impl CType {
         }
 
         Ok(Self::Struct(name, members_))
+    }
+
+    pub fn get_member(&self, name: &str) -> Result<(Self, usize), &str> {
+        if let CType::Struct(_, members) = self {
+            for m in members.iter() {
+                if m.name == name {
+                    return Ok((m.ctype.clone(), m.offset));
+                }
+            }
+
+            Err("メンバーが存在しません")
+        } else {
+            Err("構造体ではありません")
+        }
     }
 
     // ポインタ同士の減算用の処理。減算結果をポインタが指す
