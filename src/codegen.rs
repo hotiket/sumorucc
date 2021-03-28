@@ -39,6 +39,7 @@ impl Context {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy)]
 enum Register {
     RAX,
@@ -51,8 +52,10 @@ enum Register {
     R9,
 
     // 下位8bit
+    #[allow(dead_code)]
     AL,
     DIL,
+    #[allow(dead_code)]
     BPL,
     SIL,
     DL,

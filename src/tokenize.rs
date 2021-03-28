@@ -24,6 +24,7 @@ enum TokenKind {
     // 文字列
     Str(Vec<u8>),
     // 入力の終わりを表すトークン
+    #[allow(clippy::upper_case_acronyms)]
     EOF,
 }
 

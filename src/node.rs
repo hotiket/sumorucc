@@ -19,7 +19,9 @@ pub enum NodeKind {
     Assign(Box<Node>, Box<Node>),
     Eq(Box<Node>, Box<Node>),
     Neq(Box<Node>, Box<Node>),
+    #[allow(clippy::upper_case_acronyms)]
     LT(Box<Node>, Box<Node>),
+    #[allow(clippy::upper_case_acronyms)]
     LTE(Box<Node>, Box<Node>),
     Add(Box<Node>, Box<Node>),
     Sub(Box<Node>, Box<Node>),
