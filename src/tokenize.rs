@@ -379,7 +379,11 @@ fn read_num_escape_sequence(
     let num = isize::from_str_radix(&s, radix).unwrap();
 
     // 1バイトで表現できない場合の値は処理系定義。
-    // とりあえず0から255でclampして返すことにする。
+    // GCC/Clangでは-pedantic-errorsオプションが
+    // つけられた時はコンパイルエラーにしている。
+    // そちらのほうがいいかもしれないが、エラーを
+    // 返すのが面倒なので、とりあえず0から255で
+    // clampして返すことにする。
     if num < 0 {
         Some((0, nr_read_bytes))
     } else if num > 255 {
@@ -509,6 +513,33 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                     },
                     kind: TokenKind::Num(n),
                 }));
+            }
+
+            // 文字
+            '\'' => {
+                if let Some((string, nr_read_bytes)) = read_string(&mut src_iter, '\'') {
+                    byte_e += nr_read_bytes;
+                    let token_str = src.code[byte_s..byte_e].to_string();
+
+                    if string.is_empty() {
+                        error_at!(src, pos, "空の文字定数です");
+                    }
+
+                    // 1バイトで表現できない場合の値は処理系定義。
+                    // はじめの1バイトを返すこととする。
+                    let n = i8::from_ne_bytes([string[0]]) as isize;
+
+                    token.push(Rc::new(Token {
+                        common: TokenCommon {
+                            token_str,
+                            src: Rc::clone(&src),
+                            pos,
+                        },
+                        kind: TokenKind::Num(n),
+                    }));
+                } else {
+                    error_at!(src, pos, "終端されていません");
+                }
             }
 
             // 文字列
