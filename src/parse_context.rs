@@ -35,25 +35,26 @@ pub struct Str {
 struct Scope {
     child: Option<Box<Self>>,
     lvars: Vec<LVar>,
-    structs: Vec<CType>,
+    tags: Vec<CType>,
 }
 
-fn find_struct(structs: &[CType], name: &str) -> Option<CType> {
-    structs
+fn find_tag(tags: &[CType], name: &str) -> Option<CType> {
+    tags
         .iter()
-        .find(|c| matches!(c, CType::Struct(n, ..) if n.as_ref().map_or(false, |n| n == name)))
+        .find(|c| matches!(c, CType::Struct(n, ..) | CType::Union(n, ..) if n.as_ref().map_or(false, |n| n == name)))
         .cloned()
 }
 
-fn get_struct_name<'a>(ctype: &'a CType) -> Result<Option<&'a str>, &'static str> {
-    if let CType::Struct(name, ..) = ctype {
-        if let Some(name) = name.as_ref() {
-            Ok(Some(name))
-        } else {
-            Ok(None)
+fn get_tag<'a>(ctype: &'a CType) -> Result<Option<&'a str>, &'static str> {
+    match ctype {
+        CType::Struct(name, ..) | CType::Union(name, ..) => {
+            if let Some(name) = name.as_ref() {
+                Ok(Some(name))
+            } else {
+                Ok(None)
+            }
         }
-    } else {
-        Err("構造体ではありません")
+        _ => Err("構造体/共用体ではありません"),
     }
 }
 
@@ -62,7 +63,7 @@ impl Scope {
         Self {
             child: None,
             lvars: Vec::new(),
-            structs: Vec::new(),
+            tags: Vec::new(),
         }
     }
 
@@ -100,31 +101,31 @@ impl Scope {
             .map(|v| NodeKind::LVar(v.name.clone(), v.ctype.clone(), v.offset))
     }
 
-    fn add_struct(&mut self, name: &str, ctype: CType) -> Result<(), &str> {
+    fn add_tag(&mut self, name: &str, ctype: CType) -> Result<(), &str> {
         if let Some(ref mut child) = self.child {
-            child.add_struct(name, ctype)
-        } else if self.find_current_struct(name).is_some() {
+            child.add_tag(name, ctype)
+        } else if self.find_current_tag(name).is_some() {
             Err("すでに定義されています")
         } else {
-            self.structs.push(ctype);
+            self.tags.push(ctype);
 
             Ok(())
         }
     }
 
-    fn find_struct(&self, name: &str) -> Option<CType> {
+    fn find_tag(&self, name: &str) -> Option<CType> {
         if let Some(ref child) = self.child {
-            let ctype = child.find_struct(name);
+            let ctype = child.find_tag(name);
             if ctype.is_some() {
                 return ctype;
             }
         }
 
-        self.find_current_struct(name)
+        self.find_current_tag(name)
     }
 
-    fn find_current_struct(&self, name: &str) -> Option<CType> {
-        find_struct(&self.structs, name)
+    fn find_current_tag(&self, name: &str) -> Option<CType> {
+        find_tag(&self.tags, name)
     }
 
     fn enter(&mut self) {
@@ -206,12 +207,12 @@ impl Function {
         self.scope.find_var(name)
     }
 
-    fn add_struct(&mut self, name: &str, ctype: CType) -> Result<(), &str> {
-        self.scope.add_struct(name, ctype)
+    fn add_tag(&mut self, name: &str, ctype: CType) -> Result<(), &str> {
+        self.scope.add_tag(name, ctype)
     }
 
-    fn find_struct(&self, name: &str) -> Option<CType> {
-        self.scope.find_struct(name)
+    fn find_tag(&self, name: &str) -> Option<CType> {
+        self.scope.find_tag(name)
     }
 
     fn enter(&mut self) {
@@ -232,7 +233,7 @@ impl Function {
 pub struct ParseContext {
     pub funcs: Vec<Function>,
     pub gvars: Vec<GVar>,
-    pub structs: Vec<CType>,
+    pub tags: Vec<CType>,
     pub strs: Vec<Str>,
     current_fn: Option<String>,
     str_n: usize,
@@ -243,7 +244,7 @@ impl ParseContext {
         Self {
             funcs: Vec::new(),
             gvars: Vec::new(),
-            structs: Vec::new(),
+            tags: Vec::new(),
             strs: Vec::new(),
             current_fn: None,
             str_n: 0,
@@ -313,8 +314,8 @@ impl ParseContext {
         }
     }
 
-    pub fn add_struct(&mut self, ctype: CType) -> Result<(), &str> {
-        let name = match get_struct_name(&ctype) {
+    pub fn add_tag(&mut self, ctype: CType) -> Result<(), &str> {
+        let name = match get_tag(&ctype) {
             Ok(Some(name)) => name,
             // タグをつけていない構造体は後から
             // 参照できないので登録せずにOkを返す。
@@ -325,11 +326,11 @@ impl ParseContext {
         if self.current_fn.is_some() {
             let fn_name = self.current_fn.as_ref().unwrap().clone();
             let func = self.find_fn_mut(&fn_name).unwrap();
-            func.add_struct(&name.to_string(), ctype)
-        } else if self.find_struct(name).is_some() {
+            func.add_tag(&name.to_string(), ctype)
+        } else if self.find_tag(name).is_some() {
             Err("すでに定義されています")
         } else {
-            self.structs.push(ctype);
+            self.tags.push(ctype);
             Ok(())
         }
     }
@@ -365,21 +366,21 @@ impl ParseContext {
             .map(|v| NodeKind::GVar(v.name.clone(), v.ctype.clone()))
     }
 
-    pub fn find_struct(&self, name: &str) -> Option<CType> {
-        self.find_lstruct(name).or_else(|| self.find_gstruct(name))
+    pub fn find_tag(&self, name: &str) -> Option<CType> {
+        self.find_ltag(name).or_else(|| self.find_gtag(name))
     }
 
-    pub fn find_lstruct(&self, name: &str) -> Option<CType> {
+    pub fn find_ltag(&self, name: &str) -> Option<CType> {
         if let Some(ref fn_name) = self.current_fn {
             let func = self.find_fn(fn_name).unwrap();
-            func.find_struct(name)
+            func.find_tag(name)
         } else {
             None
         }
     }
 
-    pub fn find_gstruct(&self, name: &str) -> Option<CType> {
-        find_struct(&self.structs, name)
+    pub fn find_gtag(&self, name: &str) -> Option<CType> {
+        find_tag(&self.tags, name)
     }
 
     pub fn set_val(&mut self, name: &str, val: Vec<Node>) -> Result<(), &str> {

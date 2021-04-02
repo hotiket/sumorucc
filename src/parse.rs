@@ -35,23 +35,39 @@ fn program(stream: &mut TokenStream, ctx: &mut ParseContext) -> Vec<Node> {
     nodes
 }
 
-// type_specifier := "int" | "char" | struct_specifier
+// type_specifier := "int" | "char" | struct_or_union_specifier
 fn type_specifier(stream: &mut TokenStream, ctx: &mut ParseContext) -> Option<(CType, Rc<Token>)> {
     if let Some(token) = stream.consume_keyword("int") {
         Some((CType::Integer(Integer::Int), token))
     } else if let Some(token) = stream.consume_keyword("char") {
         Some((CType::Integer(Integer::Char), token))
     } else {
-        struct_specifier(stream, ctx)
+        struct_or_union_specifier(stream, ctx)
     }
 }
 
-// struct_specifier := "struct" ( ident? ("{" struct_declaration "}") | ident )
-fn struct_specifier(
+enum StructOrUnion {
+    Struct,
+    Union,
+}
+
+// struct_or_union := "struct" | "union"
+fn struct_or_union(stream: &mut TokenStream) -> Option<(StructOrUnion, Rc<Token>)> {
+    if let Some(token) = stream.consume_keyword("struct") {
+        Some((StructOrUnion::Struct, token))
+    } else if let Some(token) = stream.consume_keyword("union") {
+        Some((StructOrUnion::Union, token))
+    } else {
+        None
+    }
+}
+
+// struct_or_union_specifier := struct_or_union ( ident? ("{" struct_declaration "}") | ident )
+fn struct_or_union_specifier(
     stream: &mut TokenStream,
     ctx: &mut ParseContext,
 ) -> Option<(CType, Rc<Token>)> {
-    if let Some(token) = stream.consume_keyword("struct") {
+    if let Some((struct_or_union, token)) = struct_or_union(stream) {
         let tag = stream.consume_identifier().map(|ret| ret.1);
 
         if stream.consume_punctuator("{").is_some() {
@@ -60,12 +76,17 @@ fn struct_specifier(
             stream.expect_punctuator("}");
 
             if members.is_empty() {
-                error_tok!(token, "空の構造体は定義できません");
+                error_tok!(token, "空の構造体/共用体は定義できません");
             }
 
-            match CType::new_struct(tag, members) {
+            let new_type = match struct_or_union {
+                StructOrUnion::Struct => CType::new_struct(tag, members),
+                StructOrUnion::Union => CType::new_union(tag, members),
+            };
+
+            match new_type {
                 Ok(ctype) => {
-                    if let Err(msg) = ctx.add_struct(ctype.clone()) {
+                    if let Err(msg) = ctx.add_tag(ctype.clone()) {
                         error_tok!(token, "{}", msg);
                     }
                     Some((ctype, token))
@@ -76,13 +97,13 @@ fn struct_specifier(
             }
         } else {
             if tag.is_none() {
-                error_tok!(token, "構造体のタグが指定されていません");
+                error_tok!(token, "構造体/共用体のタグが指定されていません");
             }
 
-            if let Some(ctype) = ctx.find_struct(tag.as_ref().unwrap()) {
+            if let Some(ctype) = ctx.find_tag(tag.as_ref().unwrap()) {
                 Some((ctype, token))
             } else {
-                error_tok!(token, "構造体{}の定義が存在しません", tag.unwrap());
+                error_tok!(token, "構造体/共用体{}の定義が存在しません", tag.unwrap());
             }
         }
     } else {

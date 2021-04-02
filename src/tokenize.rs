@@ -294,7 +294,7 @@ fn is_ident_2(c: char) -> bool {
 
 fn is_keyword(s: &str) -> bool {
     let keywords = [
-        "return", "if", "else", "for", "while", "int", "char", "sizeof", "struct",
+        "return", "if", "else", "for", "while", "int", "char", "sizeof", "struct", "union",
     ];
 
     for keyword in &keywords {
