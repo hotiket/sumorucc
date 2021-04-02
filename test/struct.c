@@ -45,5 +45,14 @@ int main()
 	ASSERT(7, ({struct {struct X{int i;} *xp;} a,*p=&a; struct X x; x.i=5; a.xp=&x; a.xp->i=7; x.i;}));
 	ASSERT(11, ({struct {struct X{int i;} *xp;} a,*p=&a; struct X x; x.i=5; a.xp=&x; p->xp->i=11; x.i;}));
 
+	ASSERT(3, ({struct {int i; char c[2];} x,y,z; x.i=3; x.c[0]=5; x.c[1]=7; z=y=x; y.i;}));
+	ASSERT(5, ({struct {int i; char c[2];} x,y,z; x.i=3; x.c[0]=5; x.c[1]=7; z=y=x; y.c[0];}));
+	ASSERT(7, ({struct {int i; char c[2];} x,y,z; x.i=3; x.c[0]=5; x.c[1]=7; z=y=x; y.c[1];}));
+	ASSERT(3, ({struct {int i; char c[2];} x,y,z; x.i=3; x.c[0]=5; x.c[1]=7; z=y=x; z.i;}));
+	ASSERT(5, ({struct {int i; char c[2];} x,y,z; x.i=3; x.c[0]=5; x.c[1]=7; z=y=x; z.c[0];}));
+	ASSERT(7, ({struct {int i; char c[2];} x,y,z; x.i=3; x.c[0]=5; x.c[1]=7; z=y=x; z.c[1];}));
+
+	ASSERT(11, ({struct {struct inner {int i;} i;} x; struct inner y; x.i.i=11; y=x.i; y.i;}));
+
 	return 0;
 }

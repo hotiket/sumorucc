@@ -80,8 +80,8 @@ fn struct_or_union_specifier(
             }
 
             let new_type = match struct_or_union {
-                StructOrUnion::Struct => CType::new_struct(tag, members),
-                StructOrUnion::Union => CType::new_union(tag, members),
+                StructOrUnion::Struct => CType::new_struct(tag, members, Rc::clone(&token)),
+                StructOrUnion::Union => CType::new_union(tag, members, Rc::clone(&token)),
             };
 
             match new_type {

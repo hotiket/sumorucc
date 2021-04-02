@@ -18,6 +18,7 @@ use codegen::codegen;
 use parse::parse;
 use tokenize::tokenize;
 
+#[derive(PartialEq)]
 pub struct Source {
     pub path: Option<String>,
     pub code: String,

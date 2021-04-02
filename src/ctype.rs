@@ -24,8 +24,12 @@ pub enum CType {
     Integer(Integer),
     Pointer(Box<Self>),
     Array(Box<Self>, usize),
-    Struct(Option<String>, Vec<Member>),
-    Union(Option<String>, Vec<Member>),
+    // NOTE: タグ名, メンバーだけを持つと、それらが一致していれば
+    //       異なる箇所で定義された構造体であっても同一のものと
+    //       判定してしまう。定義された箇所のトークンを持つことで
+    //       そのような構造体を異なるものとして判定できるようにする。
+    Struct(Option<String>, Vec<Member>, Rc<Token>),
+    Union(Option<String>, Vec<Member>, Rc<Token>),
     Statement,
 }
 
@@ -70,6 +74,11 @@ impl CType {
                 }
                 (Self::Pointer(p_base), Self::Array(a_base, _)) if p_base == a_base => {
                     Self::array_to_ptr(rhs);
+                    Ok(lhs.ctype.clone())
+                }
+                (Self::Struct(..), Self::Struct(..)) | (Self::Union(..), Self::Union(..))
+                    if lhs.ctype == rhs.ctype =>
+                {
                     Ok(lhs.ctype.clone())
                 }
                 _ => Err(ERROR_INVALID_OPERAND),
@@ -174,9 +183,10 @@ impl CType {
     pub fn new_struct(
         name: Option<String>,
         members: Vec<(String, CType)>,
+        token: Rc<Token>,
     ) -> Result<Self, &'static str> {
         match Self::make_ctype_members(members, align_to) {
-            Ok(members) => Ok(Self::Struct(name, members)),
+            Ok(members) => Ok(Self::Struct(name, members, token)),
             Err(msg) => Err(msg),
         }
     }
@@ -184,16 +194,17 @@ impl CType {
     pub fn new_union(
         name: Option<String>,
         members: Vec<(String, CType)>,
+        token: Rc<Token>,
     ) -> Result<Self, &'static str> {
         match Self::make_ctype_members(members, |_, _| 0) {
-            Ok(members) => Ok(Self::Union(name, members)),
+            Ok(members) => Ok(Self::Union(name, members, token)),
             Err(msg) => Err(msg),
         }
     }
 
     pub fn get_member(&self, name: &str) -> Result<(Self, usize), &str> {
         match self {
-            Self::Struct(_, members) | Self::Union(_, members) => {
+            Self::Struct(_, members, _) | Self::Union(_, members, _) => {
                 for m in members.iter() {
                     if m.name == name {
                         return Ok((m.ctype.clone(), m.offset));
@@ -261,7 +272,7 @@ impl CType {
             Self::Integer(Integer::Int) => 8,
             Self::Pointer(_) => 8,
             Self::Array(base, size) => base.size() * size,
-            Self::Struct(_, members) => {
+            Self::Struct(_, members, _) => {
                 if let Some(m) = members.last() {
                     let raw_size = m.offset + m.ctype.size();
                     align_to(raw_size, self.alignof())
@@ -269,7 +280,7 @@ impl CType {
                     unreachable!("空の構造体は定義できません");
                 }
             }
-            Self::Union(_, members) => {
+            Self::Union(_, members, _) => {
                 let max_size = members.iter().map(|m| m.ctype.size()).max().unwrap_or(0);
                 align_to(max_size, self.alignof())
             }
@@ -291,7 +302,7 @@ impl CType {
         match self {
             Self::Integer(_) | Self::Pointer(_) => self.size(),
             Self::Array(base, _) => base.alignof(),
-            Self::Struct(_, members) | Self::Union(_, members) => {
+            Self::Struct(_, members, _) | Self::Union(_, members, _) => {
                 members.iter().map(|m| m.ctype.alignof()).max().unwrap_or(0)
             }
             Self::Statement => 0,
@@ -360,7 +371,7 @@ impl fmt::Display for CType {
             Self::Integer(Integer::Int) => write!(f, "int"),
             Self::Pointer(base) => write!(f, "{}*", base),
             Self::Array(base, size) => write!(f, "{}[{}]", base, size),
-            Self::Struct(name, members) | Self::Union(name, members) => {
+            Self::Struct(name, members, _) | Self::Union(name, members, _) => {
                 let struct_or_union = if matches!(self, Self::Struct(..)) {
                     "struct"
                 } else {

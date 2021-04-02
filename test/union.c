@@ -33,5 +33,13 @@ int main()
 	ASSERT(7, ({union {union X{int i;} *xp;} a,*p=&a; union X x; x.i=5; a.xp=&x; a.xp->i=7; x.i;}));
 	ASSERT(11, ({union {union X{int i;} *xp;} a,*p=&a; union X x; x.i=5; a.xp=&x; p->xp->i=11; x.i;}));
 
+	ASSERT(3, ({union {int i; char c;} x,y,z; x.i=3; z=y=x; y.i;}));
+	ASSERT(5, ({union {int i; char c;} x,y,z; x.c=5; z=y=x; y.c;}));
+	ASSERT(3, ({union {int i; char c;} x,y,z; x.i=3; z=y=x; z.i;}));
+	ASSERT(5, ({union {int i; char c;} x,y,z; x.c=5; z=y=x; z.c;}));
+
+	ASSERT(7, ({union {union inner {int i; char c;} i;} x; union inner y; x.i.i=7; y=x.i; y.i;}));
+	ASSERT(11, ({union {union inner {int i; char c;} i;} x; union inner y; x.i.c=11; y=x.i; y.c;}));
+
 	return 0;
 }

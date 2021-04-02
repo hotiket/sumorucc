@@ -155,6 +155,9 @@ fn gen_load(ctype: &CType) {
         CType::Integer(Integer::Char) => code!("movsbq (%rax), %rax"),
         CType::Integer(Integer::Int) => code!("mov (%rax), %rax"),
         CType::Pointer(_) => code!("mov (%rax), %rax"),
+        // 値がraxに入りきる保障が無い型はなにもせず
+        // gen_load呼び出し元で個別に対応する。
+        CType::Array(..) | CType::Struct(..) | CType::Union(..) => (),
         _ => unreachable!(),
     }
 }
@@ -222,10 +225,17 @@ fn gen(node: &Node, ctx: &mut Context) {
             push(Register::RAX, ctx);
             gen_lval(lhs, ctx);
             pop(Register::RDI, ctx);
+
             match &lhs.ctype {
                 CType::Integer(Integer::Char) => {
                     code!("mov %dil, (%rax)");
                     code!("movsbq %dil, %rax");
+                }
+                CType::Struct(..) | CType::Union(..) => {
+                    for i in 0..lhs.ctype.size() {
+                        code!("movb {}(%rdi), %sil", i);
+                        code!("movb %sil, {}(%rax)", i);
+                    }
                 }
                 _ => {
                     code!("mov %rdi, (%rax)");

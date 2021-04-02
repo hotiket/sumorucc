@@ -4,6 +4,7 @@ use std::str::CharIndices;
 
 use super::Source;
 
+#[derive(PartialEq)]
 pub struct TokenCommon {
     pub token_str: String,
     pub src: Rc<Source>,
@@ -12,6 +13,7 @@ pub struct TokenCommon {
     pub pos: usize,
 }
 
+#[derive(PartialEq)]
 enum TokenKind {
     // 記号
     Punctuator,
@@ -28,6 +30,7 @@ enum TokenKind {
     EOF,
 }
 
+#[derive(PartialEq)]
 pub struct Token {
     pub common: TokenCommon,
     kind: TokenKind,
