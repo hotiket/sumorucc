@@ -2,7 +2,7 @@ use std::iter::{Enumerate, Peekable};
 use std::rc::Rc;
 use std::str::CharIndices;
 
-use super::Source;
+use super::src::Source;
 
 #[derive(PartialEq)]
 pub struct TokenCommon {
