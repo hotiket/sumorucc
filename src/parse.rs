@@ -3,7 +3,8 @@ use std::rc::Rc;
 use super::ctype::{CType, Integer};
 use super::node::{Node, NodeKind};
 use super::parse_context::ParseContext;
-use super::tokenize::{Token, TokenStream};
+use super::token_stream::TokenStream;
+use super::tokenize::Token;
 
 pub fn parse(token: &[Rc<Token>]) -> (Vec<Node>, ParseContext) {
     let mut stream = TokenStream::new(token);
