@@ -23,10 +23,44 @@ macro_rules! label {
     };
 }
 
+struct Debug {
+    file: Vec<(String, usize)>,
+}
+
+impl Debug {
+    fn new() -> Self {
+        Self { file: Vec::new() }
+    }
+
+    fn find_file(&self, file: &str) -> Option<usize> {
+        match self.file.iter().find(|f| f.0 == file) {
+            Some(f) => Some(f.1),
+            None => None,
+        }
+    }
+
+    fn add_file(&mut self, file: &str) -> Result<usize, ()> {
+        if self.find_file(file).is_some() {
+            return Err(());
+        }
+
+        let fileno = if self.file.is_empty() {
+            // filenoは正の整数なので1から始める
+            1
+        } else {
+            self.file.last().unwrap().1
+        };
+        self.file.push((file.to_string(), fileno));
+
+        Ok(fileno)
+    }
+}
+
 struct Context {
     fname: String,
     label: usize,
     stack: usize,
+    debug: Debug,
 }
 
 impl Context {
@@ -35,6 +69,7 @@ impl Context {
             fname: String::new(),
             label: 0,
             stack: 0,
+            debug: Debug::new(),
         }
     }
 }
@@ -162,7 +197,30 @@ fn gen_load(ctype: &CType) {
     }
 }
 
+// デバッグ用にソース位置情報を出力
+fn gen_loc(node: &Node, ctx: &mut Context) {
+    let filename = match &node.token.common.src.path {
+        Some(path) => &path,
+        None => "<stdin>",
+    };
+
+    let fileno = match ctx.debug.find_file(filename) {
+        Some(fileno) => fileno,
+        None => {
+            let fileno = ctx.debug.add_file(filename).unwrap();
+            code!(".file {} \"{}\"", fileno, filename);
+            fileno
+        }
+    };
+
+    let lineno = node.token.common.loc.row + 1;
+
+    code!(".loc {} {}", fileno, lineno);
+}
+
 fn gen(node: &Node, ctx: &mut Context) {
+    gen_loc(node, ctx);
+
     match &node.kind {
         NodeKind::Defun(..) => {
             error_tok!(node.token, "関数内で関数定義はできません");

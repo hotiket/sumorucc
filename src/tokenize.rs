@@ -1,16 +1,20 @@
-use std::iter::{Enumerate, Peekable};
+use std::iter::Peekable;
 use std::rc::Rc;
 use std::str::CharIndices;
 
 use super::src::Source;
 
+#[derive(Clone, Copy, PartialEq)]
+pub struct Loc {
+    pub row: usize,
+    pub col: usize,
+}
+
 #[derive(PartialEq)]
 pub struct TokenCommon {
     pub token_str: String,
     pub src: Rc<Source>,
-    // ソースにおけるトークンの
-    // コードポイント単位での開始位置
-    pub pos: usize,
+    pub loc: Loc,
 }
 
 #[derive(PartialEq)]
@@ -34,6 +38,51 @@ pub enum TokenKind {
 pub struct Token {
     pub common: TokenCommon,
     pub kind: TokenKind,
+}
+
+struct LocIter<'a> {
+    iter: CharIndices<'a>,
+    loc: Loc,
+}
+
+impl<'a> LocIter<'a> {
+    fn new(iter: CharIndices<'a>) -> Self {
+        LocIter {
+            iter,
+            loc: Loc { row: 0, col: 0 },
+        }
+    }
+}
+
+impl<'a> Iterator for LocIter<'a> {
+    type Item = (Loc, (usize, char));
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iter.next() {
+            Some(elem) => {
+                let ret_loc = self.loc;
+
+                if elem.1 == '\n' {
+                    self.loc.row += 1;
+                    self.loc.col = 0;
+                } else {
+                    self.loc.col += 1;
+                }
+
+                Some((ret_loc, elem))
+            }
+            None => None,
+        }
+    }
+}
+
+trait CharIndicesExt<'a> {
+    fn loc_iter(self) -> LocIter<'a>;
+}
+
+impl<'a> CharIndicesExt<'a> for CharIndices<'a> {
+    fn loc_iter(self) -> LocIter<'a> {
+        LocIter::new(self)
+    }
 }
 
 fn is_punctuator(test_op: &str) -> bool {
@@ -81,17 +130,13 @@ fn push_char_as_u8(v: &mut Vec<u8>, c: char) {
     }
 }
 
-fn read_oct_escape_sequence(
-    src_iter: &mut Peekable<Enumerate<CharIndices>>,
-) -> Option<(u8, usize)> {
+fn read_oct_escape_sequence(src_iter: &mut Peekable<LocIter>) -> Option<(u8, usize)> {
     const DIGITS: [char; 8] = ['0', '1', '2', '3', '4', '5', '6', '7'];
 
     read_num_escape_sequence(src_iter, 8, &DIGITS, Some(3))
 }
 
-fn read_hex_escape_sequence(
-    src_iter: &mut Peekable<Enumerate<CharIndices>>,
-) -> Option<(u8, usize)> {
+fn read_hex_escape_sequence(src_iter: &mut Peekable<LocIter>) -> Option<(u8, usize)> {
     const DIGITS: [char; 22] = [
         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B',
         'C', 'D', 'E', 'F',
@@ -101,7 +146,7 @@ fn read_hex_escape_sequence(
 }
 
 fn read_num_escape_sequence(
-    src_iter: &mut Peekable<Enumerate<CharIndices>>,
+    src_iter: &mut Peekable<LocIter>,
     radix: u32,
     digits: &[char],
     max_digits: Option<usize>,
@@ -160,7 +205,7 @@ fn read_num_escape_sequence(
     }
 }
 
-fn is_comment(src_iter: &mut Peekable<Enumerate<CharIndices>>, first: char, second: char) -> bool {
+fn is_comment(src_iter: &mut Peekable<LocIter>, first: char, second: char) -> bool {
     if let Some((_, (_, c))) = src_iter.peek() {
         let b = (first == '/') && (*c == second);
         if b {
@@ -172,10 +217,7 @@ fn is_comment(src_iter: &mut Peekable<Enumerate<CharIndices>>, first: char, seco
     }
 }
 
-fn read_string(
-    src_iter: &mut Peekable<Enumerate<CharIndices>>,
-    terminator: char,
-) -> Option<(Vec<u8>, usize)> {
+fn read_string(src_iter: &mut Peekable<LocIter>, terminator: char) -> Option<(Vec<u8>, usize)> {
     const ESCAPE_SEQUENCES: [(char, u8); 12] = [
         ('\'', b'\''),
         ('\"', b'"'),
@@ -252,9 +294,9 @@ fn read_string(
 
 pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
     let mut token = Vec::new();
-    let mut src_iter = src.code.char_indices().enumerate().peekable();
+    let mut src_iter = src.code.char_indices().loc_iter().peekable();
 
-    while let Some((pos, (byte_s, c))) = src_iter.next() {
+    while let Some((loc, (byte_s, c))) = src_iter.next() {
         let mut byte_e = byte_s + c.len_utf8();
 
         match c {
@@ -276,7 +318,7 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                     common: TokenCommon {
                         token_str,
                         src: Rc::clone(&src),
-                        pos,
+                        loc,
                     },
                     kind: TokenKind::Num(n),
                 }));
@@ -289,7 +331,7 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                     let token_str = src.code[byte_s..byte_e].to_string();
 
                     if string.is_empty() {
-                        error_at!(src, pos, "空の文字定数です");
+                        error_at!(src, loc, "空の文字定数です");
                     }
 
                     // 1バイトで表現できない場合の値は処理系定義。
@@ -300,12 +342,12 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                         common: TokenCommon {
                             token_str,
                             src: Rc::clone(&src),
-                            pos,
+                            loc,
                         },
                         kind: TokenKind::Num(n),
                     }));
                 } else {
-                    error_at!(src, pos, "終端されていません");
+                    error_at!(src, loc, "終端されていません");
                 }
             }
 
@@ -321,12 +363,12 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                         common: TokenCommon {
                             token_str,
                             src: Rc::clone(&src),
-                            pos,
+                            loc,
                         },
                         kind: TokenKind::Str(string),
                     }));
                 } else {
-                    error_at!(src, pos, "終端されていません");
+                    error_at!(src, loc, "終端されていません");
                 }
             }
 
@@ -352,7 +394,7 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                     }
 
                     if !has_terminator {
-                        error_at!(src, pos, "ブロックコメントの終端が存在しません");
+                        error_at!(src, loc, "ブロックコメントの終端が存在しません");
                     }
                 } else {
                     while let Some((_, (_, c))) = src_iter.peek() {
@@ -371,7 +413,7 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                         common: TokenCommon {
                             token_str,
                             src: Rc::clone(&src),
-                            pos,
+                            loc,
                         },
                         kind: TokenKind::Punctuator,
                     }));
@@ -399,7 +441,7 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                 let common = TokenCommon {
                     token_str,
                     src: Rc::clone(&src),
-                    pos,
+                    loc,
                 };
 
                 token.push(Rc::new(Token { common, kind }));
@@ -409,16 +451,18 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
             _ if c.is_ascii_whitespace() => (),
 
             _ => {
-                error_at!(src, pos, "トークナイズできません");
+                error_at!(src, loc, "トークナイズできません");
             }
         }
     }
+
+    let loc = LocIter::new(src.code.char_indices()).last().unwrap().0;
 
     token.push(Rc::new(Token {
         common: TokenCommon {
             token_str: String::new(),
             src: Rc::clone(&src),
-            pos: src.code.chars().count(),
+            loc,
         },
         kind: TokenKind::EOF,
     }));

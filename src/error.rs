@@ -1,3 +1,5 @@
+use super::tokenize::Loc;
+
 macro_rules! error {
     ($fmt:expr) => {
         eprintln!($fmt);
@@ -13,12 +15,12 @@ macro_rules! error_at_impl {
     ($src:expr, $at:expr, $msg:expr) => {
         use crate::error::get_error_line;
 
-        let (line, row, at) = get_error_line(&$src.code, $at);
+        let (line, corr) = get_error_line(&$src.code, $at);
         let path_row = match $src.path {
-            Some(ref p) => format!("{}:{}: ", p, row + 1),
-            None => format!("-:{}: ", row + 1),
+            Some(ref p) => format!("{}:{}: ", p, $at.row + 1),
+            None => format!("-:{}: ", $at.row + 1),
         };
-        let at = at + path_row.chars().count();
+        let at = $at.col + corr + path_row.chars().count();
 
         eprintln!("{}{}", path_row, line);
         eprint!("{}^ ", " ".repeat(at));
@@ -39,44 +41,44 @@ macro_rules! error_at {
 
 macro_rules! error_tok {
     ($tok:expr, $fmt:expr) => {
-        error_at!($tok.common.src, $tok.common.pos, $fmt);
+        error_at!($tok.common.src, $tok.common.loc, $fmt);
     };
     ($tok:expr, $fmt:expr, $($arg:tt)*) => {
-        error_at!($tok.common.src, $tok.common.pos, $fmt, $($arg)*);
+        error_at!($tok.common.src, $tok.common.loc, $fmt, $($arg)*);
     };
 }
 
-pub fn get_error_line(src: &str, pos: usize) -> (String, usize, usize) {
+pub fn get_error_line(src: &str, loc: Loc) -> (String, usize) {
     let mut line = String::new();
-    let mut row = 0;
-    let mut col = 0;
+    let mut cur_row = 0;
+    let mut cur_col = 0;
+    let mut correction = 0;
 
-    for (i, c) in src.chars().enumerate() {
+    for c in src.chars() {
+        if cur_row > loc.row {
+            break;
+        }
+
         if c == '\n' {
-            if i >= pos {
-                break;
-            }
-
-            line.clear();
-            row += 1;
-            col = 0;
-
+            cur_row += 1;
             continue;
         }
 
-        let nr_col = if c == '\t' {
-            // タブはスペース4つに変換する
-            line.push_str("    ");
-            4
-        } else {
-            line.push(c);
-            1
-        };
+        if cur_row == loc.row {
+            cur_col += 1;
+            if c == '\t' {
+                // タブはスペース4つに変換する
+                line.push_str("    ");
 
-        if i < pos {
-            col += nr_col;
+                // タブをスペースに変換した分colに加算する
+                if cur_col < loc.col {
+                    correction += 3;
+                }
+            } else {
+                line.push(c);
+            };
         }
     }
 
-    (line, row, col)
+    (line, correction)
 }

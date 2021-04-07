@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use super::src::Source;
-use super::tokenize::{Token, TokenKind};
+use super::tokenize::{Loc, Token, TokenKind};
 
 pub struct TokenStream<'vec> {
     token: &'vec [Rc<Token>],
@@ -43,11 +43,12 @@ impl<'vec> TokenStream<'vec> {
         self.current = pos;
     }
 
-    pub fn pos(&self) -> usize {
+    pub fn loc(&self) -> Loc {
         if let Some(token) = self.peek() {
-            token.common.pos
+            token.common.loc
         } else {
-            self.get_src().code.chars().count()
+            // 終端にEOFがあるのでlastは必ず存在する
+            self.token.last().unwrap().common.loc
         }
     }
 
@@ -184,7 +185,7 @@ impl<'vec> TokenStream<'vec> {
         let token = self.consume_punctuator(op);
 
         if token.is_none() {
-            error_at!(self.get_src(), self.pos(), "{}ではありません", op);
+            error_at!(self.get_src(), self.loc(), "{}ではありません", op);
         }
 
         token.unwrap()
@@ -197,7 +198,7 @@ impl<'vec> TokenStream<'vec> {
         let token_num = self.consume_number();
 
         if token_num.is_none() {
-            error_at!(self.get_src(), self.pos(), "数値ではありません");
+            error_at!(self.get_src(), self.loc(), "数値ではありません");
         }
 
         token_num.unwrap()
@@ -209,7 +210,7 @@ impl<'vec> TokenStream<'vec> {
         let token_ident = self.consume_identifier();
 
         if token_ident.is_none() {
-            error_at!(self.get_src(), self.pos(), "識別子ではありません");
+            error_at!(self.get_src(), self.loc(), "識別子ではありません");
         }
 
         token_ident.unwrap()
@@ -222,7 +223,7 @@ impl<'vec> TokenStream<'vec> {
         let token = self.consume_keyword(keyword);
 
         if token.is_none() {
-            error_at!(self.get_src(), self.pos(), "{}ではありません", keyword);
+            error_at!(self.get_src(), self.loc(), "{}ではありません", keyword);
         }
 
         token.unwrap()
