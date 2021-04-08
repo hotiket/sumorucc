@@ -29,6 +29,9 @@ pub enum TokenKind {
     Num(isize),
     // 文字列
     Str(Vec<u8>),
+    // 改行
+    #[allow(clippy::upper_case_acronyms)]
+    LF,
     // 入力の終わりを表すトークン
     #[allow(clippy::upper_case_acronyms)]
     EOF,
@@ -88,7 +91,7 @@ impl<'a> CharIndicesExt<'a> for CharIndices<'a> {
 fn is_punctuator(test_op: &str) -> bool {
     let symbols = [
         "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}", "&", ",",
-        "[", "]", ".", "->",
+        "[", "]", ".", "->", "#",
     ];
 
     for symbol in &symbols {
@@ -376,10 +379,13 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
             _ if is_punctuator(&src.code[byte_s..byte_e]) => {
                 if is_comment(&mut src_iter, c, '/') {
                     // 行コメント
-                    while let Some((_, (_, c))) = src_iter.next() {
-                        if c == '\n' {
+                    // 末端の改行は改行トークンとして扱いたいので
+                    // next()ではなくpeek()で読み込む。
+                    while let Some((_, (_, c))) = src_iter.peek() {
+                        if *c == '\n' {
                             break;
                         }
+                        src_iter.next();
                     }
                 } else if is_comment(&mut src_iter, c, '*') {
                     // ブロックコメント
@@ -445,6 +451,18 @@ pub fn tokenize(src: Rc<Source>) -> Vec<Rc<Token>> {
                 };
 
                 token.push(Rc::new(Token { common, kind }));
+            }
+
+            // 改行
+            _ if c == '\n' => {
+                token.push(Rc::new(Token {
+                    common: TokenCommon {
+                        token_str: c.to_string(),
+                        src: Rc::clone(&src),
+                        loc,
+                    },
+                    kind: TokenKind::LF,
+                }));
             }
 
             // 空白文字をスキップ

@@ -20,7 +20,12 @@ run_test() {
 	src="$1"
 	echo [`basename "$src"`]
 
-	gcc -xc "$src" -E -P -C | target/debug/sumorucc - >tmp.s
+	if [ "$src" != "test/preprocess.c" ]
+	then
+		gcc -xc "$src" -E -P -C | target/debug/sumorucc - >tmp.s
+	else
+		target/debug/sumorucc "$src" >tmp.s
+	fi
 	[ $? -ne 0 ] && error_exit 1
 
 	gcc -no-pie -o tmp tmp.s "$TEST_FN_FILE"

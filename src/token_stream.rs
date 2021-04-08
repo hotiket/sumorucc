@@ -26,7 +26,7 @@ impl<'vec> TokenStream<'vec> {
         }
     }
 
-    fn next(&mut self) -> Option<Rc<Token>> {
+    pub fn next(&mut self) -> Option<Rc<Token>> {
         if self.current >= self.token.len() {
             None
         } else {
@@ -131,6 +131,18 @@ impl<'vec> TokenStream<'vec> {
         }
     }
 
+    // 次のトークンが改行のときには、trueを返す。
+    // それ以外の場合にはfalseを返す。
+    pub fn is_lf(&self) -> bool {
+        matches!(
+            self.peek().as_deref(),
+            Some(Token {
+                kind: TokenKind::LF,
+                ..
+            })
+        )
+    }
+
     // 次のトークンが期待している記号のときには、
     // そのトークンをSomeで包んで返し、トークンを1つ読み進める。
     // それ以外の場合にはNoneを返す。
@@ -173,6 +185,16 @@ impl<'vec> TokenStream<'vec> {
     // Someで包んで返しトークンを1つ読み進める。それ以外の場合にはNoneを返す。
     pub fn consume_keyword(&mut self, keyword: &str) -> Option<Rc<Token>> {
         if self.is_keyword(keyword) {
+            self.next()
+        } else {
+            None
+        }
+    }
+
+    // 次のトークンが改行の場合、そのトークンをSomeで包んで返し
+    // トークンを1つ読み進める。それ以外の場合にはNoneを返す。
+    pub fn consume_lf(&mut self) -> Option<Rc<Token>> {
+        if self.is_lf() {
             self.next()
         } else {
             None
@@ -224,6 +246,18 @@ impl<'vec> TokenStream<'vec> {
 
         if token.is_none() {
             error_at!(self.get_src(), self.loc(), "{}ではありません", keyword);
+        }
+
+        token.unwrap()
+    }
+
+    // 次のトークンが改行の場合、そのトークンを返しトークンを
+    // 1つ読み進める。それ以外の場合にはエラーを報告する。
+    pub fn expect_lf(&mut self) -> Rc<Token> {
+        let token = self.consume_lf();
+
+        if token.is_none() {
+            error_at!(self.get_src(), self.loc(), "改行ではありません");
         }
 
         token.unwrap()

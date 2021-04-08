@@ -8,6 +8,21 @@ pub struct Source {
 }
 
 pub fn read_input(path: &str) -> Result<Source, ()> {
+    match read_input_impl(path) {
+        Ok(mut src) => {
+            // 最後に必ず改行があるほうがトークナイズや
+            // プリプロセスで都合が良いので足す。
+            if !src.code.ends_with('\n') {
+                src.code.push('\n');
+            }
+
+            Ok(src)
+        }
+        Err(_) => Err(()),
+    }
+}
+
+fn read_input_impl(path: &str) -> Result<Source, ()> {
     if path == "-" {
         // 標準入力から読み込み
         let mut code = String::new();
