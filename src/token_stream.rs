@@ -226,6 +226,18 @@ impl<'vec> TokenStream<'vec> {
         token_num.unwrap()
     }
 
+    // 次のトークンが文字列の場合、そのトークンを返し、トークンを
+    // 1つ読み進める。それ以外の場合にはエラーを報告する。
+    pub fn expect_string(&mut self) -> (Rc<Token>, Vec<u8>) {
+        let token = self.consume_string();
+
+        if token.is_none() {
+            error_at!(self.get_src(), self.loc(), "文字列ではありません");
+        }
+
+        token.unwrap()
+    }
+
     // 次のトークンが識別子の場合、そのトークンを返し、トークンを
     // 1つ読み進める。それ以外の場合にはエラーを報告する。
     pub fn expect_identifier(&mut self) -> (Rc<Token>, String) {

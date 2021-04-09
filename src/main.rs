@@ -21,7 +21,7 @@ use preprocess::preprocess;
 use src::read_input;
 use tokenize::{tokenize, Token};
 
-fn get_preprocessed_token(path: &str) -> Vec<Rc<Token>> {
+pub fn get_preprocessed_token(path: &str) -> Vec<Rc<Token>> {
     let src = read_input(path);
     if src.is_err() {
         error!("ソースが読み込めません: {}", path);
