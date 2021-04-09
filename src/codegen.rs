@@ -48,7 +48,7 @@ impl Debug {
             // filenoは正の整数なので1から始める
             1
         } else {
-            self.file.last().unwrap().1
+            self.file.last().unwrap().1 + 1
         };
         self.file.push((file.to_string(), fileno));
 
