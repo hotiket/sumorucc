@@ -88,6 +88,32 @@ impl<'a> CharIndicesExt<'a> for CharIndices<'a> {
     }
 }
 
+#[allow(dead_code)]
+pub fn debug_print(token: &[Rc<Token>]) {
+    for t in token.iter() {
+        let path = if let Some(ref path) = t.common.src.path {
+            path
+        } else {
+            "<stdin>"
+        };
+
+        let t_str = &t.common.token_str;
+        let kind = match &t.kind {
+            TokenKind::Punctuator => format!("PUNCT: {}", t_str),
+            TokenKind::Ident => format!("IDENT: {}", t_str),
+            TokenKind::Keyword => format!("KEYWD: {}", t_str),
+            TokenKind::Num(n) => format!("NUMBR: {} => {}", t_str, n),
+            TokenKind::Str(_) => format!("STRNG: {}", t_str),
+            TokenKind::LF => "<LF>".to_string(),
+            TokenKind::EOF => "<EOF>".to_string(),
+        };
+
+        let Loc { row, col } = t.common.loc;
+
+        eprintln!("{:<20}:{:>3}:{:>3}: {}", path, row, col, kind);
+    }
+}
+
 fn is_punctuator(test_op: &str) -> bool {
     let symbols = [
         "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "/", "(", ")", ";", "{", "}", "&", ",",
